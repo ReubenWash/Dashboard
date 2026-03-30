@@ -1,15 +1,8 @@
 /**
- * eVibeX Admin API Client
- *
- * Base URL is read from VITE_API_BASE (default: http://localhost:8080).
- * The Vite dev-server proxy rewrites /api → http://localhost:8080/api
- * so in development you can just set VITE_API_BASE="" and let the proxy handle it.
- *
- * All staff routes require a Bearer JWT stored in localStorage under "evibex_token".
- * Role is stored under "evibex_role" ("admin" | "moderator").
+ * eVibeX Admin API Client — Fixed for Vercel + Dev
  */
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+const BASE = import.meta.env.VITE_API_BASE ?? '' // e.g., '' for dev, 'https://dashboard-nu-hazel-70.vercel.app' for prod
 
 // ── Storage helpers ─────────────────────────────────────────────────────────
 export const getToken  = ()      => localStorage.getItem('evibex_token')
@@ -23,7 +16,7 @@ export const clearAuth = () => {
   localStorage.removeItem('evibex_role')
   localStorage.removeItem('evibex_user')
 }
-export const getStoredUser = ()       => {
+export const getStoredUser = () => {
   try { return JSON.parse(localStorage.getItem('evibex_user') ?? 'null') } catch { return null }
 }
 export const setStoredUser = (u) => localStorage.setItem('evibex_user', JSON.stringify(u))
@@ -52,9 +45,7 @@ async function apiFetch(path, options = {}) {
     throw new Error(msg)
   }
 
-  // 204 No Content
   if (res.status === 204) return null
-
   return res.json()
 }
 
@@ -63,33 +54,27 @@ async function apiFetch(path, options = {}) {
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * Login as admin.
- * POST /api/v1/admin/auth/login
- * Body: { admin_name, password }
- * Returns: { token, ...adminProfile }
+ * Login as admin
  */
 export async function loginAdmin(adminName, password) {
-  return apiFetch('/api/v1/admin/auth/login', {
+  return apiFetch(`${prefix('admin')}/auth/login`, {
     method: 'POST',
     body: JSON.stringify({ admin_name: adminName, password }),
   })
 }
 
 /**
- * Login as moderator.
- * POST /api/v1/mod/auth/login
- * Body: { moderator_name, password }
- * Returns: { token, ...modProfile }
+ * Login as moderator
  */
 export async function loginModerator(moderatorName, password) {
-  return apiFetch('/api/v1/mod/auth/login', {
+  return apiFetch(`${prefix('moderator')}/auth/login`, {
     method: 'POST',
     body: JSON.stringify({ moderator_name: moderatorName, password }),
   })
 }
 
 /**
- * Convenience: login using the current role stored in localStorage.
+ * Convenience login using current role in localStorage
  */
 export async function login(name, password, role = 'admin') {
   if (role === 'moderator') return loginModerator(name, password)
@@ -100,12 +85,6 @@ export async function login(name, password, role = 'admin') {
 //  USER PROFILE
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Get a user's profile.
- * GET /api/v1/{admin|mod}/users/:userId/profile
- * Requires: users:read permission
- * Returns: user profile object
- */
 export async function getUserProfile(userId, role = getRole()) {
   return apiFetch(`${prefix(role)}/users/${userId}/profile`)
 }
@@ -114,21 +93,6 @@ export async function getUserProfile(userId, role = getRole()) {
 //  MODERATION
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Moderate a user (ban / suspend / unban / mute / unmute).
- * POST /api/v1/{admin|mod}/users/:userId/moderation
- * Requires: users:moderate permission
- *
- * Body:
- *   { status?: "active"|"suspended"|"banned", mute?: boolean, reason: string }
- *   At least one of status or mute must be provided alongside reason.
- *
- * Audit actions logged by backend:
- *   banned   → ban_user
- *   active   → unban_user
- *   muted    → mute_user / unmute_user
- *   other    → update_user
- */
 export async function moderateUser(userId, { status, mute, reason }, role = getRole()) {
   const body = { reason }
   if (status !== undefined) body.status = status
@@ -150,9 +114,6 @@ export const unmuteUser  = (userId, reason, role) => moderateUser(userId, { mute
 //  FULL PROFILE EDIT
 // ════════════════════════════════════════════════════════════════════════════
 
-/**
- * Allowlisted fields for PATCH (password and wallet are NOT editable here).
- */
 export const EDIT_ALLOWLIST = [
   'username', 'full_name', 'email', 'bio',
   'phone_number', 'avatar', 'cover_image',
@@ -160,15 +121,7 @@ export const EDIT_ALLOWLIST = [
   'show_online_status', 'is_verified',
 ]
 
-/**
- * Full profile edit.
- * PATCH /api/v1/{admin|mod}/users/:userId
- * Requires: users:full_edit permission
- * Body: object with any subset of EDIT_ALLOWLIST keys
- * Returns: { ok: true }
- */
 export async function editUserProfile(userId, fields, role = getRole()) {
-  // Strip any keys not in the allowlist as a safety measure
   const safe = Object.fromEntries(
     Object.entries(fields).filter(([k]) => EDIT_ALLOWLIST.includes(k))
   )
