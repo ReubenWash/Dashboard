@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { getToken, getRole } from '../api'   // ✅ uses your actual api.js
+import { getToken, getRole } from '../api/client'  // ✅ correct path
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -11,7 +11,6 @@ const QUICK_ACTIONS = [
   { label: 'Edit Profile',  icon: 'bi-pencil-square', path: '/edit',     color: 'var(--success)' },
 ]
 
-// ── Status helper ────────────────────────────────────────────────────────────
 function getStatus(user) {
   if (user.is_banned     === true) return 'banned'
   if (user.is_suspended  === true) return 'suspended'
@@ -32,15 +31,14 @@ function deriveStats(users) {
   }
 }
 
-// ── Fetch all users using the same pattern as your api.js ───────────────────
 async function fetchAllUsers(role) {
-  const token    = getToken()
-  const prefix   = role === 'moderator' ? 'mod' : 'admin'
-  const endpoint = `${BASE}/api/v1/${prefix}/users/all`
+  const token  = getToken()
+  const prefix = role === 'moderator' ? 'mod' : 'admin'
+  const url    = `${BASE}/api/v1/${prefix}/users/all`
 
-  console.log('[Dashboard] Fetching:', endpoint)
+  console.log('[Dashboard] Fetching:', url)
 
-  const res = await fetch(endpoint, {
+  const res = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -63,7 +61,6 @@ async function fetchAllUsers(role) {
   return data
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, role } = useAuth()
   const navigate = useNavigate()
@@ -80,7 +77,6 @@ export default function DashboardPage() {
 
     fetchAllUsers(currentRole)
       .then(raw => {
-        // Handle { users: [] }, { data: [] }, or plain array
         const users = Array.isArray(raw)
           ? raw
           : Array.isArray(raw?.users)
@@ -188,7 +184,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Debug / status banner ── */}
+      {/* ── Status / debug banner ── */}
       <div
         className="card mb-4"
         style={{
@@ -203,8 +199,8 @@ export default function DashboardPage() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <i
             className={`bi ${
-              statsError   ? 'bi-x-circle'          :
-              statsLoading ? 'bi-hourglass-split'   :
+              statsError   ? 'bi-x-circle'        :
+              statsLoading ? 'bi-hourglass-split' :
                              'bi-check-circle-fill'
             }`}
             style={{
@@ -220,14 +216,13 @@ export default function DashboardPage() {
               <>
                 Stats loaded — Total: <strong>{stats.total}</strong> | Banned:{' '}
                 <strong>{stats.banned}</strong> | Suspended:{' '}
-                <strong>{stats.suspended}</strong> | Muted:{' '}
-                <strong>{stats.muted}</strong>
+                <strong>{stats.suspended}</strong> | Muted: <strong>{stats.muted}</strong>
               </>
             )}
             {statsError && (
               <>
-                Could not load stats ({statsError}). Check Console (F12) for{' '}
-                <code>[Dashboard]</code> logs.
+                Could not load stats ({statsError}). Open DevTools (F12) → Console and look
+                for <code>[Dashboard]</code> lines — share them to get a fix.
               </>
             )}
           </p>
