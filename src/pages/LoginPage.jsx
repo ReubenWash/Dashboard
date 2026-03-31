@@ -186,7 +186,7 @@ export default function LoginPage() {
             color: "var(--text-muted)",
           }}
         >
-          Staff accounts are provisioned via the seed tool — no public signup.
+        
         </p>
       </div>
 

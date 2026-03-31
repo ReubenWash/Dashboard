@@ -9,23 +9,14 @@ const QUICK_ACTIONS = [
   { label: 'Edit Profile',  icon: 'bi-pencil-square', path: '/edit',     color: 'var(--success)' },
 ]
 
-// ---------------------------------------------------------------------------
-// Helpers — defensively derive a user's moderation status from whatever
-// field shape the eVibeX backend actually returns.
-// Adjust the field names here once you confirm the real API response shape.
-// ---------------------------------------------------------------------------
 function getStatus(user) {
-  // Try explicit boolean flags first
   if (user.is_banned     === true) return 'banned'
   if (user.is_suspended  === true) return 'suspended'
   if (user.is_muted      === true) return 'muted'
-
-  // Try a single status string field (most common pattern)
   const s = (user.status ?? user.moderation_status ?? user.account_status ?? '').toLowerCase()
   if (s === 'banned')    return 'banned'
   if (s === 'suspended') return 'suspended'
   if (s === 'muted')     return 'muted'
-
   return 'active'
 }
 
@@ -38,9 +29,6 @@ function deriveStats(users) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
 export default function DashboardPage() {
   const { user, role } = useAuth()
   const navigate = useNavigate()
@@ -50,18 +38,35 @@ export default function DashboardPage() {
 
   const [stats,        setStats]        = useState({ total: null, banned: null, suspended: null, muted: null })
   const [statsLoading, setStatsLoading] = useState(true)
-  const [statsError,   setStatsError]   = useState(false)
+  const [statsError,   setStatsError]   = useState(null) // stores error string
 
   useEffect(() => {
-    // Only admins have access to /admin/users/all
     const endpoint = isAdmin
       ? '/api/v1/admin/users/all'
       : '/api/v1/mod/users/all'
 
+    // ── DEBUG LOGS (remove after issue is resolved) ──
+    console.log('[Dashboard] Fetching from endpoint:', endpoint)
+    console.log('[Dashboard] isAdmin:', isAdmin, '| role:', role)
+    console.log('[Dashboard] api baseURL:', api.defaults?.baseURL)
+
     api.get(endpoint)
       .then(res => {
-        // Handle both { users: [...] } and plain array responses
-        const raw   = res.data
+        console.log('[Dashboard] ✅ Status:', res.status)
+        console.log('[Dashboard] ✅ res.data:', res.data)
+
+        const raw = res.data
+
+        if (Array.isArray(raw)) {
+          console.log('[Dashboard] Shape: plain array, length:', raw.length)
+        } else if (Array.isArray(raw?.users)) {
+          console.log('[Dashboard] Shape: { users: [] }, length:', raw.users.length)
+        } else if (Array.isArray(raw?.data)) {
+          console.log('[Dashboard] Shape: { data: [] }, length:', raw.data.length)
+        } else {
+          console.warn('[Dashboard] ⚠️ Unknown shape. Keys found:', Object.keys(raw ?? {}))
+        }
+
         const users = Array.isArray(raw)
           ? raw
           : Array.isArray(raw?.users)
@@ -70,9 +75,20 @@ export default function DashboardPage() {
               ? raw.data
               : []
 
-        setStats(deriveStats(users))
+        console.log('[Dashboard] Users count:', users.length)
+        if (users.length > 0) console.log('[Dashboard] First user sample:', users[0])
+
+        const derived = deriveStats(users)
+        console.log('[Dashboard] Derived stats:', derived)
+        setStats(derived)
       })
-      .catch(() => setStatsError(true))
+      .catch(err => {
+        const status  = err.response?.status
+        const message = err.message
+        console.error('[Dashboard] ❌ status:', status, '| message:', message)
+        console.error('[Dashboard] ❌ full error:', err)
+        setStatsError(`${status ?? 'Network error'}: ${message}`)
+      })
       .finally(() => setStatsLoading(false))
   }, [isAdmin])
 
@@ -101,7 +117,6 @@ export default function DashboardPage() {
 
   return (
     <>
-      {/* Pulse keyframe — injected once */}
       <style>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -164,21 +179,41 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Error notice (only shown if fetch failed) ── */}
-      {statsError && (
-        <div
-          className="card mb-4"
-          style={{ padding: '14px 18px', borderLeft: '3px solid var(--danger)' }}
-        >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-            <i className="bi bi-exclamation-triangle" style={{ color: 'var(--danger)', marginTop: 2, flexShrink: 0 }} />
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 0 }}>
-              Could not load user stats. The backend may be waking up (Render free tier) or
-              you may not have permission to access this endpoint. Stats will show <strong>—</strong> until resolved.
-            </p>
-          </div>
+      {/* ── Debug status banner (remove after issue is resolved) ── */}
+      <div
+        className="card mb-4"
+        style={{
+          padding: '14px 18px',
+          borderLeft: `3px solid ${statsError ? 'var(--danger)' : statsLoading ? 'var(--warning)' : 'var(--success)'}`,
+        }}
+      >
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <i
+            className={`bi ${statsError ? 'bi-x-circle' : statsLoading ? 'bi-hourglass-split' : 'bi-check-circle-fill'}`}
+            style={{
+              color: statsError ? 'var(--danger)' : statsLoading ? 'var(--warning)' : 'var(--success)',
+              marginTop: 2,
+              flexShrink: 0,
+            }}
+          />
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 0 }}>
+            {statsLoading && 'Loading user stats…'}
+            {!statsLoading && !statsError && (
+              <>
+                ✅ Stats loaded — Total: <strong>{stats.total}</strong> | Banned:{' '}
+                <strong>{stats.banned}</strong> | Suspended: <strong>{stats.suspended}</strong> | Muted:{' '}
+                <strong>{stats.muted}</strong>
+              </>
+            )}
+            {statsError && (
+              <>
+                ❌ Stats fetch failed: <strong>{statsError}</strong>. Open DevTools (F12) → Console
+                and look for <code>[Dashboard]</code> lines — share them here to get a fix.
+              </>
+            )}
+          </p>
         </div>
-      )}
+      </div>
 
       {/* ── Quick actions ── */}
       <div className="card">
