@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import api from '../api' // your axios instance
+import { getToken, getRole } from '../api'   // ✅ uses your actual api.js
+
+const BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const QUICK_ACTIONS = [
   { label: 'Look Up User',  icon: 'bi-search',        path: '/lookup',   color: 'var(--accent)' },
@@ -9,6 +11,7 @@ const QUICK_ACTIONS = [
   { label: 'Edit Profile',  icon: 'bi-pencil-square', path: '/edit',     color: 'var(--success)' },
 ]
 
+// ── Status helper ────────────────────────────────────────────────────────────
 function getStatus(user) {
   if (user.is_banned     === true) return 'banned'
   if (user.is_suspended  === true) return 'suspended'
@@ -29,6 +32,38 @@ function deriveStats(users) {
   }
 }
 
+// ── Fetch all users using the same pattern as your api.js ───────────────────
+async function fetchAllUsers(role) {
+  const token    = getToken()
+  const prefix   = role === 'moderator' ? 'mod' : 'admin'
+  const endpoint = `${BASE}/api/v1/${prefix}/users/all`
+
+  console.log('[Dashboard] Fetching:', endpoint)
+
+  const res = await fetch(endpoint, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+
+  console.log('[Dashboard] Response status:', res.status)
+
+  if (!res.ok) {
+    let msg = `${res.status}`
+    try {
+      const data = await res.json()
+      msg = data.message ?? data.error ?? msg
+    } catch { /* ignore */ }
+    throw new Error(msg)
+  }
+
+  const data = await res.json()
+  console.log('[Dashboard] Raw data:', data)
+  return data
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, role } = useAuth()
   const navigate = useNavigate()
@@ -38,35 +73,14 @@ export default function DashboardPage() {
 
   const [stats,        setStats]        = useState({ total: null, banned: null, suspended: null, muted: null })
   const [statsLoading, setStatsLoading] = useState(true)
-  const [statsError,   setStatsError]   = useState(null) // stores error string
+  const [statsError,   setStatsError]   = useState(null)
 
   useEffect(() => {
-    const endpoint = isAdmin
-      ? '/api/v1/admin/users/all'
-      : '/api/v1/mod/users/all'
+    const currentRole = role ?? getRole()
 
-    // ── DEBUG LOGS (remove after issue is resolved) ──
-    console.log('[Dashboard] Fetching from endpoint:', endpoint)
-    console.log('[Dashboard] isAdmin:', isAdmin, '| role:', role)
-    console.log('[Dashboard] api baseURL:', api.defaults?.baseURL)
-
-    api.get(endpoint)
-      .then(res => {
-        console.log('[Dashboard] ✅ Status:', res.status)
-        console.log('[Dashboard] ✅ res.data:', res.data)
-
-        const raw = res.data
-
-        if (Array.isArray(raw)) {
-          console.log('[Dashboard] Shape: plain array, length:', raw.length)
-        } else if (Array.isArray(raw?.users)) {
-          console.log('[Dashboard] Shape: { users: [] }, length:', raw.users.length)
-        } else if (Array.isArray(raw?.data)) {
-          console.log('[Dashboard] Shape: { data: [] }, length:', raw.data.length)
-        } else {
-          console.warn('[Dashboard] ⚠️ Unknown shape. Keys found:', Object.keys(raw ?? {}))
-        }
-
+    fetchAllUsers(currentRole)
+      .then(raw => {
+        // Handle { users: [] }, { data: [] }, or plain array
         const users = Array.isArray(raw)
           ? raw
           : Array.isArray(raw?.users)
@@ -75,22 +89,17 @@ export default function DashboardPage() {
               ? raw.data
               : []
 
-        console.log('[Dashboard] Users count:', users.length)
+        console.log('[Dashboard] Users found:', users.length)
         if (users.length > 0) console.log('[Dashboard] First user sample:', users[0])
 
-        const derived = deriveStats(users)
-        console.log('[Dashboard] Derived stats:', derived)
-        setStats(derived)
+        setStats(deriveStats(users))
       })
       .catch(err => {
-        const status  = err.response?.status
-        const message = err.message
-        console.error('[Dashboard] ❌ status:', status, '| message:', message)
-        console.error('[Dashboard] ❌ full error:', err)
-        setStatsError(`${status ?? 'Network error'}: ${message}`)
+        console.error('[Dashboard] ❌ Error:', err.message)
+        setStatsError(err.message)
       })
       .finally(() => setStatsLoading(false))
-  }, [isAdmin])
+  }, [role])
 
   const STAT_CARDS = [
     { label: 'Total Users',  icon: 'bi-people-fill',       colorClass: 'text-accent',  value: stats.total },
@@ -179,36 +188,46 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Debug status banner (remove after issue is resolved) ── */}
+      {/* ── Debug / status banner ── */}
       <div
         className="card mb-4"
         style={{
           padding: '14px 18px',
-          borderLeft: `3px solid ${statsError ? 'var(--danger)' : statsLoading ? 'var(--warning)' : 'var(--success)'}`,
+          borderLeft: `3px solid ${
+            statsError   ? 'var(--danger)'  :
+            statsLoading ? 'var(--warning)' :
+                           'var(--success)'
+          }`,
         }}
       >
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <i
-            className={`bi ${statsError ? 'bi-x-circle' : statsLoading ? 'bi-hourglass-split' : 'bi-check-circle-fill'}`}
+            className={`bi ${
+              statsError   ? 'bi-x-circle'          :
+              statsLoading ? 'bi-hourglass-split'   :
+                             'bi-check-circle-fill'
+            }`}
             style={{
-              color: statsError ? 'var(--danger)' : statsLoading ? 'var(--warning)' : 'var(--success)',
-              marginTop: 2,
-              flexShrink: 0,
+              color: statsError   ? 'var(--danger)'  :
+                     statsLoading ? 'var(--warning)' :
+                                    'var(--success)',
+              marginTop: 2, flexShrink: 0,
             }}
           />
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 0 }}>
             {statsLoading && 'Loading user stats…'}
             {!statsLoading && !statsError && (
               <>
-                ✅ Stats loaded — Total: <strong>{stats.total}</strong> | Banned:{' '}
-                <strong>{stats.banned}</strong> | Suspended: <strong>{stats.suspended}</strong> | Muted:{' '}
+                Stats loaded — Total: <strong>{stats.total}</strong> | Banned:{' '}
+                <strong>{stats.banned}</strong> | Suspended:{' '}
+                <strong>{stats.suspended}</strong> | Muted:{' '}
                 <strong>{stats.muted}</strong>
               </>
             )}
             {statsError && (
               <>
-                ❌ Stats fetch failed: <strong>{statsError}</strong>. Open DevTools (F12) → Console
-                and look for <code>[Dashboard]</code> lines — share them here to get a fix.
+                Could not load stats ({statsError}). Check Console (F12) for{' '}
+                <code>[Dashboard]</code> logs.
               </>
             )}
           </p>
@@ -246,9 +265,9 @@ export default function DashboardPage() {
         <div className="card-body-pad">
           <div className="row g-2">
             {[
-              { perm: 'users:read',      label: 'View user profiles', icon: 'bi-eye',           adminOnly: false },
-              { perm: 'users:moderate',  label: 'Moderate users',      icon: 'bi-shield-check',  adminOnly: false },
-              { perm: 'users:full_edit', label: 'Full profile edit',   icon: 'bi-pencil-square', adminOnly: !isAdmin },
+              { perm: 'users:read',      label: 'View user profiles', adminOnly: false },
+              { perm: 'users:moderate',  label: 'Moderate users',      adminOnly: false },
+              { perm: 'users:full_edit', label: 'Full profile edit',   adminOnly: !isAdmin },
             ].map(p => {
               const granted = !p.adminOnly
               return (
