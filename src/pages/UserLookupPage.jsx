@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { getUserProfile } from '../api/client'
+import { getUserProfile, resolveId } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import UserProfileCard from '../components/ui/UserProfileCard'
@@ -13,18 +13,21 @@ export default function UserLookupPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
 
-  const [userId, setUserId]         = useState(searchParams.get('uid') ?? '')
-  const [user, setUser]             = useState(null)
-  const [loading, setLoading]       = useState(false)
-  const [modOpen, setModOpen]       = useState(false)
-  const [editOpen, setEditOpen]     = useState(false)
+  // Accept ?id= (from dashboard) OR ?uid= (legacy / topbar search)
+  const paramId = searchParams.get('id') ?? searchParams.get('uid') ?? ''
 
-  // Auto-fetch if uid query param is provided (from topbar search)
+  const [userId, setUserId]     = useState(paramId)
+  const [user, setUser]         = useState(null)
+  const [loading, setLoading]   = useState(false)
+  const [modOpen, setModOpen]   = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+
+  // Auto-fetch when a query param ID is present on mount or param change
   useEffect(() => {
-    const uid = searchParams.get('uid')
-    if (uid) {
-      setUserId(uid)
-      fetchUser(uid)
+    const pid = searchParams.get('id') ?? searchParams.get('uid') ?? ''
+    if (pid) {
+      setUserId(pid)
+      fetchUser(pid)
     }
   }, [searchParams])
 
@@ -48,12 +51,13 @@ export default function UserLookupPage() {
   }
 
   function handleModerationSuccess() {
-    // Re-fetch to reflect updated status
-    if (user?._id) fetchUser(user._id)
+    const uid = resolveId(user)
+    if (uid) fetchUser(uid)
   }
 
   function handleEditSuccess() {
-    if (user?._id) fetchUser(user._id)
+    const uid = resolveId(user)
+    if (uid) fetchUser(uid)
   }
 
   return (
@@ -80,11 +84,7 @@ export default function UserLookupPage() {
               onChange={e => setUserId(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <button
-              className="btn btn-primary"
-              onClick={() => fetchUser()}
-              disabled={loading}
-            >
+            <button className="btn btn-primary" onClick={() => fetchUser()} disabled={loading}>
               {loading
                 ? <><i className="bi bi-arrow-clockwise me-1" style={{ animation: 'spin 1s linear infinite' }} />Loading…</>
                 : <><i className="bi bi-search me-1" />Look Up</>}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { editUserProfile, EDIT_ALLOWLIST } from '../../api/client'
+import { editUserProfile, resolveId, EDIT_ALLOWLIST } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 
@@ -29,7 +29,7 @@ function initState(user) {
 export default function EditModal({ open, user, onClose, onSuccess }) {
   const { role } = useAuth()
   const { addToast } = useToast()
-  const [form, setForm]     = useState(() => initState(user))
+  const [form, setForm]       = useState(() => initState(user))
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -41,19 +41,24 @@ export default function EditModal({ open, user, onClose, onSuccess }) {
   }
 
   async function handleSubmit() {
+    // Always use resolveId — never user._id directly
+    const uid = resolveId(user)
+    if (!uid) { addToast('Cannot edit — user has no valid ID.', 'error'); return }
+
     const payload = {}
     for (const f of FIELDS) {
       const v = form[f.key]
       if (f.type === 'bool') {
-        payload[f.key] = v
+        payload[f.key] = Boolean(v)
       } else {
         if (v !== '' && v != null) payload[f.key] = v
       }
     }
     if (!Object.keys(payload).length) { addToast('No fields to update.', 'warning'); return }
+
     setLoading(true)
     try {
-      await editUserProfile(user._id, payload, role)
+      await editUserProfile(uid, payload, role)
       addToast('Profile updated successfully.', 'success')
       onSuccess?.()
       onClose()
@@ -86,7 +91,7 @@ export default function EditModal({ open, user, onClose, onSuccess }) {
                   <textarea
                     className="form-control"
                     rows={3}
-                    value={form[f.key]}
+                    value={form[f.key] ?? ''}
                     onChange={e => set(f.key, e.target.value)}
                   />
                 ) : f.type === 'bool' ? (
@@ -107,7 +112,7 @@ export default function EditModal({ open, user, onClose, onSuccess }) {
                   <input
                     type={f.type}
                     className="form-control"
-                    value={form[f.key]}
+                    value={form[f.key] ?? ''}
                     onChange={e => set(f.key, e.target.value)}
                   />
                 )}
@@ -119,10 +124,13 @@ export default function EditModal({ open, user, onClose, onSuccess }) {
         <div className="modal-footer">
           <button className="btn btn-outline-secondary btn-sm" onClick={onClose}>Cancel</button>
           <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={loading}>
-            {loading ? <><i className="bi bi-arrow-clockwise me-1" />Saving…</> : <><i className="bi bi-save me-1" />Save Changes</>}
+            {loading
+              ? <><i className="bi bi-arrow-clockwise me-1" style={{ animation: 'spin 1s linear infinite' }} />Saving…</>
+              : <><i className="bi bi-save me-1" />Save Changes</>}
           </button>
         </div>
       </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

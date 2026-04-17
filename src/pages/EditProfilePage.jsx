@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { getUserProfile, editUserProfile, EDIT_ALLOWLIST } from '../api/client'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { getUserProfile, editUserProfile, resolveId, EDIT_ALLOWLIST } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import StatusBadge from '../components/ui/StatusBadge'
@@ -30,19 +31,33 @@ function initState(user) {
 export default function EditProfilePage() {
   const { role } = useAuth()
   const { addToast } = useToast()
+  const [searchParams] = useSearchParams()
 
-  const [userId, setUserId]     = useState('')
-  const [user, setUser]         = useState(null)
-  const [form, setForm]         = useState(initState(null))
-  const [loading, setLoading]   = useState(false)
-  const [saving, setSaving]     = useState(false)
-  const [dirty, setDirty]       = useState(false)
+  // Accept ?id= from dashboard navigation
+  const paramId = searchParams.get('id') ?? searchParams.get('uid') ?? ''
 
-  async function fetchProfile() {
-    if (!userId.trim()) { addToast('Enter a User ID.', 'warning'); return }
+  const [userId, setUserId]   = useState(paramId)
+  const [user, setUser]       = useState(null)
+  const [form, setForm]       = useState(initState(null))
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [dirty, setDirty]     = useState(false)
+
+  // Auto-load when navigated with ?id=
+  useEffect(() => {
+    const pid = searchParams.get('id') ?? searchParams.get('uid') ?? ''
+    if (pid) {
+      setUserId(pid)
+      fetchProfile(pid)
+    }
+  }, [searchParams])
+
+  async function fetchProfile(id) {
+    const uid = (id ?? userId).trim()
+    if (!uid) { addToast('Enter a User ID.', 'warning'); return }
     setLoading(true); setUser(null); setDirty(false)
     try {
-      const u = await getUserProfile(userId.trim(), role)
+      const u = await getUserProfile(uid, role)
       setUser(u)
       setForm(initState(u))
     } catch (e) {
@@ -56,24 +71,28 @@ export default function EditProfilePage() {
   }
 
   async function handleSave() {
-    if (!user?._id) { addToast('Load a user first.', 'warning'); return }
+    const uid = resolveId(user)
+    if (!uid) { addToast('No user loaded — cannot save.', 'warning'); return }
+
     const payload = {}
     for (const f of FIELDS) {
       const v = form[f.key]
       if (f.type === 'bool') {
-        payload[f.key] = v
+        payload[f.key] = Boolean(v)
       } else {
+        // Only include if user actually entered something
         if (v !== '' && v != null) payload[f.key] = v
       }
     }
     if (!Object.keys(payload).length) { addToast('No fields to update.', 'warning'); return }
+
     setSaving(true)
     try {
-      await editUserProfile(user._id, payload, role)
+      await editUserProfile(uid, payload, role)
       addToast('Profile updated successfully.', 'success')
       setDirty(false)
-      // Refresh
-      const updated = await getUserProfile(user._id, role)
+      // Re-fetch to show fresh data
+      const updated = await getUserProfile(uid, role)
       setUser(updated)
       setForm(initState(updated))
     } catch (e) {
@@ -85,6 +104,8 @@ export default function EditProfilePage() {
     if (user) { setForm(initState(user)); setDirty(false) }
   }
 
+  const resolvedId = resolveId(user)
+
   return (
     <>
       {/* Lookup */}
@@ -94,8 +115,7 @@ export default function EditProfilePage() {
         </div>
         <div className="card-body-pad">
           <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, marginBottom: 14 }}>
-            Load a user by their ObjectId, edit the allowlisted fields, then save.
-            Password and wallet/balance fields cannot be edited here.
+            Load a user by their 24-char hex ObjectId, edit the fields, then save.
           </p>
           <div className="d-flex gap-2 flex-wrap">
             <input
@@ -107,7 +127,7 @@ export default function EditProfilePage() {
               onChange={e => setUserId(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && fetchProfile()}
             />
-            <button className="btn btn-primary" onClick={fetchProfile} disabled={loading}>
+            <button className="btn btn-primary" onClick={() => fetchProfile()} disabled={loading}>
               {loading
                 ? <><i className="bi bi-arrow-clockwise me-1" style={{ animation: 'spin 1s linear infinite' }} />Loading…</>
                 : <><i className="bi bi-cloud-arrow-down me-1" />Load Fields</>}
@@ -116,7 +136,6 @@ export default function EditProfilePage() {
         </div>
       </div>
 
-      {/* Form */}
       {!user && !loading && (
         <div className="empty-state">
           <i className="bi bi-cloud-arrow-down" />
@@ -127,17 +146,19 @@ export default function EditProfilePage() {
       {user && (
         <>
           {/* User summary strip */}
-          <div
-            className="card mb-4"
-            style={{ padding: '14px 18px', borderLeft: '3px solid var(--accent)' }}
-          >
-            <div className="d-flex align-items-center gap-12 flex-wrap gap-3">
+          <div className="card mb-4" style={{ padding: '14px 18px', borderLeft: '3px solid var(--accent)' }}>
+            <div className="d-flex align-items-center gap-3 flex-wrap">
               <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                 {(user.full_name || user.username || 'U')[0].toUpperCase()}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 600 }}>{user.full_name || user.username}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>{user._id}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                  {resolvedId ?? '—'}
+                  {!resolvedId && (
+                    <span style={{ color: '#e05260', marginLeft: 8 }}>⚠ No ID found — save may fail</span>
+                  )}
+                </div>
               </div>
               <div className="d-flex gap-2">
                 <StatusBadge status={user.status} />
@@ -155,18 +176,11 @@ export default function EditProfilePage() {
           <div className="card mb-4">
             <div className="card-header-bar">
               <span className="card-title">Editable Fields</span>
-              <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
-                Allowlist: {EDIT_ALLOWLIST.join(', ')}
-              </span>
             </div>
             <div className="card-body-pad">
-              <div
-                className="perm-notice"
-                style={{ display: 'block', marginBottom: 20 }}
-              >
+              <div className="perm-notice" style={{ display: 'block', marginBottom: 20 }}>
                 <i className="bi bi-info-circle me-1" />
-                Password and wallet/balance fields cannot be edited via this panel.
-                Leave text fields blank to skip updating them.
+                Password and wallet/balance fields cannot be edited here. Leave text fields blank to skip updating them.
               </div>
 
               <div className="row g-3">
@@ -190,11 +204,7 @@ export default function EditProfilePage() {
                           onChange={e => setField(f.key, e.target.checked)}
                           style={{ cursor: 'pointer' }}
                         />
-                        <label
-                          className="form-check-label"
-                          htmlFor={`ef-${f.key}`}
-                          style={{ fontSize: 13, color: 'var(--text-secondary)' }}
-                        >
+                        <label className="form-check-label" htmlFor={`ef-${f.key}`} style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                           {form[f.key] ? 'Enabled' : 'Disabled'}
                         </label>
                       </div>
@@ -211,20 +221,12 @@ export default function EditProfilePage() {
               </div>
 
               <div className="d-flex gap-2 mt-4">
-                <button
-                  className="btn btn-primary"
-                  onClick={handleSave}
-                  disabled={saving || !dirty}
-                >
+                <button className="btn btn-primary" onClick={handleSave} disabled={saving || !dirty || !resolvedId}>
                   {saving
                     ? <><i className="bi bi-arrow-clockwise me-1" style={{ animation: 'spin 1s linear infinite' }} />Saving…</>
                     : <><i className="bi bi-save me-1" />Save Changes</>}
                 </button>
-                <button
-                  className="btn btn-outline-secondary"
-                  onClick={handleClear}
-                  disabled={saving}
-                >
+                <button className="btn btn-outline-secondary" onClick={handleClear} disabled={saving}>
                   <i className="bi bi-arrow-counterclockwise me-1" />Reset
                 </button>
               </div>

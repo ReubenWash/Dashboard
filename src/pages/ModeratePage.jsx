@@ -1,15 +1,16 @@
-import React, { useState } from 'react'
-import { getUserProfile, moderateUser } from '../api/client'
+import React, { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { getUserProfile, moderateUser, resolveId } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import StatusBadge from '../components/ui/StatusBadge'
 
 const ACTIONS = [
-  { key: 'ban',     label: 'Ban',     icon: 'bi-slash-circle',    color: 'var(--danger)',         desc: 'Sets status to "banned". Logged as ban_user.' },
-  { key: 'suspend', label: 'Suspend', icon: 'bi-pause-circle',    color: 'var(--warning)',        desc: 'Sets status to "suspended". Logged as update_user.' },
-  { key: 'unban',   label: 'Unban',   icon: 'bi-check-circle',    color: 'var(--success)',        desc: 'Restores status to "active". Logged as unban_user.' },
-  { key: 'mute',    label: 'Mute',    icon: 'bi-mic-mute',        color: 'var(--text-secondary)', desc: 'Sets is_muted to true. Logged as mute_user.' },
-  { key: 'unmute',  label: 'Unmute',  icon: 'bi-mic',             color: 'var(--accent)',         desc: 'Sets is_muted to false. Logged as unmute_user.' },
+  { key: 'ban',     label: 'Ban',     icon: 'bi-slash-circle',   color: 'var(--danger)',         desc: 'Permanently bans the user. Sets status → "banned".' },
+  { key: 'suspend', label: 'Suspend', icon: 'bi-pause-circle',   color: 'var(--warning)',        desc: 'Temporarily suspends access. Sets status → "suspended".' },
+  { key: 'unban',   label: 'Unban',   icon: 'bi-check-circle',   color: 'var(--success)',        desc: 'Restores the user to active status → "active".' },
+  { key: 'mute',    label: 'Mute',    icon: 'bi-mic-mute',       color: 'var(--text-secondary)', desc: 'Silences the user (is_muted = true).' },
+  { key: 'unmute',  label: 'Unmute',  icon: 'bi-mic',            color: 'var(--accent)',         desc: 'Removes mute (is_muted = false).' },
 ]
 
 function buildBody(action, reason) {
@@ -17,27 +18,41 @@ function buildBody(action, reason) {
   if (action === 'ban')     body.status = 'banned'
   if (action === 'suspend') body.status = 'suspended'
   if (action === 'unban')   body.status = 'active'
-  if (action === 'mute')    body.mute = true
-  if (action === 'unmute')  body.mute = false
+  if (action === 'mute')    body.mute   = true
+  if (action === 'unmute')  body.mute   = false
   return body
 }
 
 export default function ModeratePage() {
   const { role } = useAuth()
   const { addToast } = useToast()
+  const [searchParams] = useSearchParams()
 
-  const [userId, setUserId]         = useState('')
+  // Accept ?id= from dashboard, ?uid= from topbar
+  const paramId = searchParams.get('id') ?? searchParams.get('uid') ?? ''
+
+  const [userId, setUserId]         = useState(paramId)
   const [user, setUser]             = useState(null)
   const [loadingProfile, setLP]     = useState(false)
   const [selectedAction, setAction] = useState(null)
   const [reason, setReason]         = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  async function fetchProfile() {
-    if (!userId.trim()) { addToast('Enter a User ID.', 'warning'); return }
+  // Auto-fetch when navigated with ?id=
+  useEffect(() => {
+    const pid = searchParams.get('id') ?? searchParams.get('uid') ?? ''
+    if (pid) {
+      setUserId(pid)
+      fetchProfile(pid)
+    }
+  }, [searchParams])
+
+  async function fetchProfile(id) {
+    const uid = (id ?? userId).trim()
+    if (!uid) { addToast('Enter a User ID.', 'warning'); return }
     setLP(true); setUser(null)
     try {
-      const u = await getUserProfile(userId.trim(), role)
+      const u = await getUserProfile(uid, role)
       setUser(u)
     } catch (e) {
       addToast(e.message, 'error')
@@ -45,27 +60,29 @@ export default function ModeratePage() {
   }
 
   async function handleSubmit() {
-    const uid = userId.trim() || user?._id
-    if (!uid)           { addToast('Enter a User ID.', 'warning'); return }
-    if (!selectedAction){ addToast('Select an action.', 'warning'); return }
-    if (!reason.trim()) { addToast('A reason is required.', 'warning'); return }
+    // Always use the resolved ID from the fetched user object — never rely on the raw input
+    // because the input might have trailing spaces or the user object uses _id vs id
+    const uid = resolveId(user) ?? userId.trim()
+    if (!uid)            { addToast('Load a user first.', 'warning'); return }
+    if (!selectedAction) { addToast('Select an action.', 'warning'); return }
+    if (!reason.trim())  { addToast('A reason is required.', 'warning'); return }
+
     setSubmitting(true)
     try {
       await moderateUser(uid, buildBody(selectedAction, reason.trim()), role)
-      addToast(`User ${selectedAction}ed successfully.`, 'success')
+      addToast(`Action "${selectedAction}" applied successfully.`, 'success')
       setReason('')
       setAction(null)
-      // Re-fetch to show updated status
-      if (user?._id) {
-        const updated = await getUserProfile(user._id, role)
-        setUser(updated)
-      }
+      // Re-fetch to reflect updated status in the preview
+      const updated = await getUserProfile(uid, role)
+      setUser(updated)
     } catch (e) {
       addToast(e.message, 'error')
     } finally { setSubmitting(false) }
   }
 
   const actionMeta = ACTIONS.find(a => a.key === selectedAction)
+  const resolvedId = resolveId(user)
 
   return (
     <>
@@ -90,7 +107,7 @@ export default function ModeratePage() {
                 />
                 <button
                   className="btn btn-outline-secondary btn-sm"
-                  onClick={fetchProfile}
+                  onClick={() => fetchProfile()}
                   disabled={loadingProfile}
                   style={{ flexShrink: 0 }}
                 >
@@ -108,7 +125,9 @@ export default function ModeratePage() {
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{user.full_name || user.username}</div>
-                    <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user._id}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {resolvedId ?? <span style={{ color: '#e05260' }}>⚠ No ID — moderation may fail</span>}
+                    </div>
                   </div>
                   <div className="d-flex flex-column gap-1 align-items-end">
                     <StatusBadge status={user.status} />
@@ -132,7 +151,6 @@ export default function ModeratePage() {
             </div>
             <div className="card-body-pad">
 
-              {/* Action grid */}
               <label className="form-label">Select Action</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                 {ACTIONS.map(a => (
@@ -140,9 +158,9 @@ export default function ModeratePage() {
                     key={a.key}
                     className="action-sel-btn"
                     style={{
-                      color: selectedAction === a.key ? a.color : undefined,
+                      color:       selectedAction === a.key ? a.color : undefined,
                       borderColor: selectedAction === a.key ? a.color : undefined,
-                      background: selectedAction === a.key ? `${a.color}18` : undefined,
+                      background:  selectedAction === a.key ? `${a.color}18` : undefined,
                     }}
                     onClick={() => setAction(selectedAction === a.key ? null : a.key)}
                   >
@@ -151,19 +169,12 @@ export default function ModeratePage() {
                 ))}
               </div>
 
-              {/* Action description */}
               {actionMeta && (
-                <div
-                  style={{
-                    padding: '9px 12px', borderRadius: 8, fontSize: 12.5, marginBottom: 14,
-                    background: `${actionMeta.color}15`, color: actionMeta.color,
-                  }}
-                >
+                <div style={{ padding: '9px 12px', borderRadius: 8, fontSize: 12.5, marginBottom: 14, background: `${actionMeta.color}15`, color: actionMeta.color }}>
                   <i className="bi bi-info-circle me-1" /> {actionMeta.desc}
                 </div>
               )}
 
-              {/* Reason */}
               <label className="form-label">
                 Reason <span style={{ color: 'var(--danger)' }}>*</span>
               </label>
@@ -175,28 +186,22 @@ export default function ModeratePage() {
                 onChange={e => setReason(e.target.value)}
               />
 
-              {/* Audit note */}
               <div style={{ padding: '9px 13px', borderRadius: 8, background: 'var(--accent-glow)', color: 'var(--accent)', fontSize: 12, marginBottom: 18 }}>
                 <i className="bi bi-journal-check me-1" />
-                All moderation actions are written to the <code>moderator_log</code> audit collection
-                in the admin-management database.
+                All moderation actions are written to the <code>moderator_log</code> audit collection.
               </div>
 
               <div className="d-flex gap-2">
                 <button
                   className="btn btn-primary"
                   onClick={handleSubmit}
-                  disabled={submitting || !selectedAction || !reason.trim()}
+                  disabled={submitting || !selectedAction || !reason.trim() || !user}
                 >
                   {submitting
                     ? <><i className="bi bi-arrow-clockwise me-1" style={{ animation: 'spin 1s linear infinite' }} />Submitting…</>
                     : <><i className="bi bi-shield-check me-1" />Apply Moderation</>}
                 </button>
-                <button
-                  className="btn btn-outline-secondary"
-                  onClick={() => { setAction(null); setReason('') }}
-                  disabled={submitting}
-                >
+                <button className="btn btn-outline-secondary" onClick={() => { setAction(null); setReason('') }} disabled={submitting}>
                   Clear
                 </button>
               </div>
