@@ -1,12 +1,13 @@
 {
+  "version": 2,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://load-balancer-9ovy.onrender.com"
+      "source": "/api/:path*",
+      "destination": "https://load-balancer-9ovy.onrender.com/:path*"
     },
     {
       "source": "/(.*)",
-      "destination": "/"
+      "destination": "/index.html"
     }
   ]
 }
