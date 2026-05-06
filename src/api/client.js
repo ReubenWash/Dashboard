@@ -93,7 +93,7 @@ export async function getUserProfile(userId, role = getRole()) {
   if (!id) throw new Error('No user ID provided.')
   return apiFetch(`${prefix(role)}/users/${id}/profile`)
 }
-
+ 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  USERS — list
 // ═══════════════════════════════════════════════════════════════════════════════
