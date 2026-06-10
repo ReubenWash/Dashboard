@@ -3,7 +3,8 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://load-balancer-9ovy.onrender.com/api/:path*"
+      "destination": "https://load-balancer-7fe9.onrender.com/api/:path*"
+    
     },
     {
       "source": "/(.*)",
