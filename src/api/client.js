@@ -147,3 +147,167 @@ export async function editUserProfile(userId, fields, role = getRole()) {
     body: JSON.stringify(safe),
   })
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  CONTENT MODERATION — collections & actions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch items from any content collection.
+ * @param {string} collection - 'reports', 'videos', 'images', 'comments', 'dms'
+ * @param {object} params - query params (e.g., { status: 'pending', limit: 20 })
+ * @param {string} role - 'admin' or 'moderator'
+ */
+export async function getContentCollection(collection, params = {}, role = getRole()) {
+  const query = new URLSearchParams(params).toString()
+  const url = `${prefix(role)}/collections/${collection}${query ? '?' + query : ''}`
+  return apiFetch(url)
+}
+
+/**
+ * Apply moderation action to any content type.
+ * @param {string} collection - 'reports', 'videos', 'images', 'comments', 'dms'
+ * @param {string} contentId - ObjectId of the content item
+ * @param {string} action - 'approve' | 'remove' | 'shadow_ban' | 'escalate'
+ * @param {string} reason - reason for the action
+ * @param {string} role - 'admin' or 'moderator'
+ */
+export async function moderateContent(collection, contentId, action, reason, role = getRole()) {
+  if (!collection || !contentId || !action || !reason) {
+    throw new Error('collection, contentId, action, and reason are required.')
+  }
+  return apiFetch(`${prefix(role)}/content/action`, {
+    method: 'POST',
+    body: JSON.stringify({ collection, content_id: contentId, action, reason }),
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  LIVE STREAMING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get all live streams, optionally filter by active.
+ * @param {object} options - { active: true/false }
+ */
+export async function getLiveStreams({ active } = {}, role = getRole()) {
+  const query = active !== undefined ? `?active=${active}` : ''
+  return apiFetch(`${prefix(role)}/live/streams${query}`)
+}
+
+/**
+ * Force-end a live stream by admin.
+ * @param {string} streamId - ObjectId of the stream
+ */
+export async function forceEndStream(streamId, role = getRole()) {
+  if (!streamId) throw new Error('Stream ID is required.')
+  return apiFetch(`${prefix(role)}/live/streams/${streamId}/force-end`, {
+    method: 'POST',
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  FINANCIALS — Earnings, Withdrawals, Payouts
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get users with earnings information.
+ * @param {string} status - 'unpaid' | 'paid' | 'all' (defaults to 'all')
+ */
+export async function getEarningsUsers(status = 'all', role = getRole()) {
+  const query = status !== 'all' ? `?status=${status}` : ''
+  return apiFetch(`${prefix(role)}/earnings/users${query}`)
+}
+
+/**
+ * Mark a user's earnings as paid (debits the earning wallet).
+ * @param {string} userId - ObjectId of the user
+ */
+export async function markEarningsPaid(userId, role = getRole()) {
+  if (!userId) throw new Error('User ID is required.')
+  return apiFetch(`${prefix(role)}/earnings/users/${userId}/mark-paid`, {
+    method: 'POST',
+  })
+}
+
+/**
+ * Fetch financial collections like ledger, deposits, etc.
+ * @param {string} collection - 'ledger', 'deposits', 'withdrawals', 'creator-earnings', 'viewer-earnings', 'earnings-payouts', 'platform-revenue'
+ * @param {object} params - optional query params
+ */
+export async function getFinancialCollection(collection, params = {}, role = getRole()) {
+  const query = new URLSearchParams(params).toString()
+  const url = `${prefix(role)}/collections/${collection}${query ? '?' + query : ''}`
+  return apiFetch(url)
+}
+
+/**
+ * Get withdrawals by status (pending, processing, etc.)
+ * @param {string} status - e.g., 'pending', 'processing', 'completed'
+ */
+export async function getWithdrawals(status, role = getRole()) {
+  if (!status) throw new Error('Status is required (pending, processing, etc.).')
+  return apiFetch(`${prefix(role)}/withdrawals/${status}`)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  COINS, GIFTS, SUBSCRIPTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch coin packages, gifts, gift transactions, or subscriptions.
+ * @param {string} collection - 'coin-packages', 'gifts', 'gift-transactions', 'subscriptions'
+ * @param {object} params - optional query params
+ */
+export async function getCoinsGiftsSubs(collection, params = {}, role = getRole()) {
+  const query = new URLSearchParams(params).toString()
+  const url = `${prefix(role)}/collections/${collection}${query ? '?' + query : ''}`
+  return apiFetch(url)
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  NOTIFICATIONS, DISCOVERY, PAYMENTS, SAFETY, ROLES, FLAGS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Fetch admin collections: notifications, notification-logs, hashtags, payment-gateways,
+ * fraud-alerts, admin-audit-logs, feature-flags.
+ * @param {string} collection - collection name
+ * @param {object} params - optional query params
+ */
+export async function getAdminCollection(collection, params = {}, role = getRole()) {
+  const query = new URLSearchParams(params).toString()
+  const url = `${prefix(role)}/collections/${collection}${query ? '?' + query : ''}`
+  return apiFetch(url)
+}
+
+// ── Settings ──
+
+/**
+ * Get all settings (all categories).
+ */
+export async function getAllSettings(role = getRole()) {
+  return apiFetch(`${prefix(role)}/settings`)
+}
+
+/**
+ * Get settings for a specific category.
+ * @param {string} category - e.g., 'feature_flags', 'platform_fees', etc.
+ */
+export async function getSettingsByCategory(category, role = getRole()) {
+  if (!category) throw new Error('Category is required.')
+  return apiFetch(`${prefix(role)}/settings/${category}`)
+}
+
+/**
+ * Update settings for a category.
+ * @param {string} category - e.g., 'feature_flags', 'platform_fees', etc.
+ * @param {object} configData - the configuration object (will be merged/overwritten)
+ */
+export async function updateSettings(category, configData, role = getRole()) {
+  if (!category) throw new Error('Category is required.')
+  return apiFetch(`${prefix(role)}/settings/${category}`, {
+    method: 'PUT',
+    body: JSON.stringify(configData),
+  })
+}

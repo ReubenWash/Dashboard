@@ -23,6 +23,31 @@ const NAV = [
     label: "Edit Profile",
     section: "Moderation",
   },
+  // ─── NEW ────────────────────────────────────────────────
+  {
+    to: "/content",
+    icon: "bi-file-earmark-text",
+    label: "Content Moderation",
+    section: "Content",
+  },
+  {
+    to: "/streams",
+    icon: "bi-broadcast",
+    label: "Live Streams",
+    section: "Content",
+  },
+  {
+    to: "/finances",
+    icon: "bi-wallet2",
+    label: "Financials",
+    section: "Finance",
+  },
+  {
+    to: "/settings",
+    icon: "bi-gear",
+    label: "Settings",
+    section: "System",
+  },
 ];
 
 const PAGE_TITLES = {
@@ -30,6 +55,10 @@ const PAGE_TITLES = {
   "/lookup": "User Lookup",
   "/moderate": "Moderate User",
   "/edit": "Edit Profile",
+  "/content": "Content Moderation",
+  "/streams": "Live Streams",
+  "/finances": "Financials",
+  "/settings": "Settings",
 };
 
 export default function DashboardLayout() {
