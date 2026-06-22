@@ -86,6 +86,7 @@ export default function DashboardPage() {
       (u.username  ?? '').toLowerCase().includes(q) ||
       (u.full_name ?? '').toLowerCase().includes(q) ||
       (u.email     ?? '').toLowerCase().includes(q) ||
+      (u.phone_number ?? u.phone ?? '').toLowerCase().includes(q) ||
       String(resolveId(u) ?? '').includes(q)
     )
   })
@@ -103,7 +104,6 @@ export default function DashboardPage() {
     return v
   }
 
-  // Navigate to lookup/moderate/edit pages pre-filled with the user's ID
   function goLookup(u)   { navigate(`/lookup?id=${resolveId(u) ?? ''}`) }
   function goModerate(u) { navigate(`/moderate?id=${resolveId(u) ?? ''}`) }
   function goEdit(u)     { navigate(`/edit?id=${resolveId(u) ?? ''}`) }
@@ -127,7 +127,7 @@ export default function DashboardPage() {
       <div className="card mb-4" style={{ padding: '28px', background: 'linear-gradient(120deg, var(--bg-card) 60%, var(--accent-glow) 100%)', borderLeft: '3px solid var(--accent)' }}>
         <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
           <div>
-            <h4 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, marginBottom: 4 }}>Welcome back, {displayName} 👋</h4>
+            <h4 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, marginBottom: 4 }}>Welcome back, {displayName} </h4>
             <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, marginBottom: 0 }}>
               Signed in as <span className={`role-pill ${isAdmin ? 'admin' : 'moderator'}`}>{isAdmin ? 'Admin' : 'Moderator'}</span>. Use the sidebar to manage users.
             </p>
@@ -162,7 +162,7 @@ export default function DashboardPage() {
               </span>
             )}
           </span>
-          <input className="search-box" placeholder="Search name, username, email, ID…" value={search} onChange={e => setSearch(e.target.value)} />
+          <input className="search-box" placeholder="Search name, username, email, phone, ID…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
 
         <div style={{ padding: 0 }}>
@@ -187,7 +187,7 @@ export default function DashboardPage() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg-hover)' }}>
-                    {['#', 'User', 'Email', 'Status', 'Verified', 'Actions'].map(h => (
+                    {['#', 'User', 'Email', 'Phone', 'Status', 'Verified', 'Email Verified', 'Actions'].map(h => (
                       <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: 'var(--text-muted)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -200,11 +200,12 @@ export default function DashboardPage() {
                     const name     = u.full_name ?? u.name ?? u.username ?? '—'
                     const username = u.username ? `@${u.username}` : ''
                     const email    = u.email ?? '—'
+                    const phone    = u.phone_number ?? u.phone ?? '—'
                     const verified = u.is_verified === true
+                    const emailVerified = u.is_email_verified === true
 
                     return (
                       <tr key={uid ?? idx} className="user-row" style={{ borderBottom: '1px solid var(--border)' }}>
-                        {/* # */}
                         <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 700, minWidth: 44, fontSize: 13 }}>
                           {idx + 1}
                         </td>
@@ -230,19 +231,29 @@ export default function DashboardPage() {
                         {/* Email */}
                         <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', minWidth: 180 }}>{email}</td>
 
+                        {/* Phone */}
+                        <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', minWidth: 140 }}>{phone}</td>
+
                         {/* Status */}
                         <td style={{ padding: '12px 16px', minWidth: 110 }}>
                           <StatusBadge status={status} />
                         </td>
 
-                        {/* Verified */}
+                        {/* Verified (profile verified) */}
                         <td style={{ padding: '12px 16px', minWidth: 80 }}>
                           {verified
                             ? <i className="bi bi-patch-check-fill" style={{ color: 'var(--accent)', fontSize: 16 }} />
                             : <i className="bi bi-dash" style={{ color: 'var(--text-muted)' }} />}
                         </td>
 
-                        {/* Actions — all 3 pass the resolved 24-hex ID */}
+                        {/* Email Verified */}
+                        <td style={{ padding: '12px 16px', minWidth: 80 }}>
+                          {emailVerified
+                            ? <i className="bi bi-envelope-check-fill" style={{ color: 'var(--success)', fontSize: 16 }} />
+                            : <i className="bi bi-envelope-slash-fill" style={{ color: 'var(--text-muted)' }} />}
+                        </td>
+
+                        {/* Actions */}
                         <td style={{ padding: '12px 14px', minWidth: 180 }}>
                           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                             <button className="act-btn" onClick={() => goLookup(u)} title="View full profile">

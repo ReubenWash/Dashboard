@@ -32,7 +32,6 @@ export default function FinancialsPage() {
       } else if (activeTab === 'withdrawals-processing') {
         data = await getWithdrawals('processing', role)
       } else {
-        // ledger, deposits, platform-revenue
         const collectionMap = {
           ledger: 'ledger',
           deposits: 'deposits',
@@ -54,13 +53,17 @@ export default function FinancialsPage() {
     fetchData()
   }, [activeTab])
 
-  const handleMarkPaid = async (userId) => {
+  const handleMarkPaid = async (userId, amount) => {
     if (!userId) return addToast('No user ID', 'warning')
-    if (!confirm('Mark this user\'s earnings as paid?')) return
+    if (amount !== undefined && (isNaN(amount) || amount <= 0)) {
+      addToast('Please enter a valid amount', 'warning')
+      return
+    }
+    if (!confirm(`Mark ${amount ? '$' + amount.toFixed(2) : 'all earnings'} as paid?`)) return
     setActionLoading(prev => ({ ...prev, [userId]: true }))
     try {
-      await markEarningsPaid(userId, role)
-      addToast('Earnings marked as paid', 'success')
+      await markEarningsPaid(userId, amount, role)
+      addToast(`Earnings ${amount ? 'of $' + amount.toFixed(2) : ''} marked as paid`, 'success')
       fetchData()
     } catch (e) {
       addToast(e.message, 'error')
@@ -113,7 +116,9 @@ export default function FinancialsPage() {
                       <>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>User</th>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Email</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Phone</th>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Balance</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Email Verified</th>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Action</th>
                       </>
@@ -140,6 +145,8 @@ export default function FinancialsPage() {
                   {items.map((item, idx) => {
                     const id = resolveId(item)
                     if (activeTab === 'earnings') {
+                      const balance = item.amount ?? item.balance ?? 0
+                      const emailVerified = item.is_email_verified === true
                       return (
                         <tr key={id || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                           <td style={{ padding: '10px 12px' }}>
@@ -147,20 +154,51 @@ export default function FinancialsPage() {
                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{item.username}</div>
                           </td>
                           <td style={{ padding: '10px 12px' }}>{item.email}</td>
-                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>{renderAmount(item.amount ?? item.balance)}</td>
+                          <td style={{ padding: '10px 12px' }}>{item.phone_number ?? item.phone ?? '—'}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 600 }}>{renderAmount(balance)}</td>
+                          <td style={{ padding: '10px 12px' }}>
+                            {emailVerified
+                              ? <i className="bi bi-check-circle-fill" style={{ color: 'var(--success)', fontSize: 16 }} />
+                              : <i className="bi bi-x-circle-fill" style={{ color: 'var(--danger)', fontSize: 16 }} />}
+                          </td>
                           <td style={{ padding: '10px 12px' }}>
                             <span style={{ color: item.status === 'paid' ? 'var(--success)' : 'var(--warning)' }}>
                               {item.status ?? 'unpaid'}
                             </span>
                           </td>
                           <td style={{ padding: '10px 12px' }}>
-                            <button
-                              className="btn btn-success btn-xs"
-                              onClick={() => handleMarkPaid(id)}
-                              disabled={actionLoading[id] || item.status === 'paid'}
-                            >
-                              {actionLoading[id] ? <i className="bi bi-arrow-clockwise" style={{ animation: 'spin 1s linear infinite' }} /> : 'Mark Paid'}
-                            </button>
+                            {item.status !== 'paid' ? (
+                              <div className="d-flex align-items-center gap-2">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  max={balance}
+                                  className="form-control form-control-sm"
+                                  style={{ width: 90, fontSize: 12 }}
+                                  defaultValue={balance}
+                                  ref={(el) => {
+                                    if (el) el.dataset.userId = id
+                                  }}
+                                />
+                                <button
+                                  className="btn btn-success btn-sm"
+                                  onClick={() => {
+                                    const input = document.querySelector(`[data-user-id="${id}"]`)
+                                    const amount = input ? parseFloat(input.value) : undefined
+                                    handleMarkPaid(id, amount)
+                                  }}
+                                  disabled={actionLoading[id] || !emailVerified}
+                                  title={!emailVerified ? 'User email not verified' : ''}
+                                >
+                                  {actionLoading[id]
+                                    ? <i className="bi bi-arrow-clockwise" style={{ animation: 'spin 1s linear infinite' }} />
+                                    : 'Pay'}
+                                </button>
+                              </div>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Paid</span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -180,7 +218,6 @@ export default function FinancialsPage() {
                         </tr>
                       )
                     } else {
-                      // ledger, deposits, platform-revenue
                       return (
                         <tr key={id || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                           <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{id}</td>
