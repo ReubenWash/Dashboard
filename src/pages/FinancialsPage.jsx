@@ -53,17 +53,22 @@ export default function FinancialsPage() {
     fetchData()
   }, [activeTab])
 
+  // Helper to get the user ID from various possible fields
+  const getUserId = (item) => {
+    return item?._id ?? item?.id ?? item?.user_id ?? item?.user?._id ?? item?.user?.id ?? null
+  }
+
   const handleMarkPaid = async (userId, amount) => {
-    if (!userId) return addToast('No user ID', 'warning')
+    if (!userId) return addToast('No user ID found for this record', 'warning')
     if (amount !== undefined && (isNaN(amount) || amount <= 0)) {
-      addToast('Please enter a valid amount', 'warning')
+      addToast('Please enter a valid amount (must be > 0)', 'warning')
       return
     }
-    if (!confirm(`Mark ${amount ? '$' + amount.toFixed(2) : 'all earnings'} as paid?`)) return
+    if (!confirm(`Mark ${amount ? '$' + Number(amount).toFixed(2) : 'all earnings'} as paid?`)) return
     setActionLoading(prev => ({ ...prev, [userId]: true }))
     try {
       await markEarningsPaid(userId, amount, role)
-      addToast(`Earnings ${amount ? 'of $' + amount.toFixed(2) : ''} marked as paid`, 'success')
+      addToast(`Earnings ${amount ? 'of $' + Number(amount).toFixed(2) : ''} marked as paid`, 'success')
       fetchData()
     } catch (e) {
       addToast(e.message, 'error')
@@ -143,12 +148,14 @@ export default function FinancialsPage() {
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                    const id = resolveId(item)
+                    // Use custom getUserId instead of resolveId because earnings might have user_id
+                    const userId = getUserId(item)
+                    const balance = item.amount ?? item.balance ?? 0
+                    const emailVerified = item.is_email_verified === true
+
                     if (activeTab === 'earnings') {
-                      const balance = item.amount ?? item.balance ?? 0
-                      const emailVerified = item.is_email_verified === true
                       return (
-                        <tr key={id || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <tr key={userId || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                           <td style={{ padding: '10px 12px' }}>
                             <div style={{ fontWeight: 500 }}>{item.full_name || item.username}</div>
                             <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>@{item.username}</div>
@@ -178,20 +185,19 @@ export default function FinancialsPage() {
                                   style={{ width: 90, fontSize: 12 }}
                                   defaultValue={balance}
                                   ref={(el) => {
-                                    if (el) el.dataset.userId = id
+                                    if (el) el.dataset.userId = userId
                                   }}
                                 />
                                 <button
                                   className="btn btn-success btn-sm"
                                   onClick={() => {
-                                    const input = document.querySelector(`[data-user-id="${id}"]`)
+                                    const input = document.querySelector(`[data-user-id="${userId}"]`)
                                     const amount = input ? parseFloat(input.value) : undefined
-                                    handleMarkPaid(id, amount)
+                                    handleMarkPaid(userId, amount)
                                   }}
-                                  disabled={actionLoading[id] || !emailVerified}
-                                  title={!emailVerified ? 'User email not verified' : ''}
+                                  disabled={actionLoading[userId]}
                                 >
-                                  {actionLoading[id]
+                                  {actionLoading[userId]
                                     ? <i className="bi bi-arrow-clockwise" style={{ animation: 'spin 1s linear infinite' }} />
                                     : 'Pay'}
                                 </button>
@@ -203,8 +209,9 @@ export default function FinancialsPage() {
                         </tr>
                       )
                     } else if (activeTab === 'withdrawals-pending' || activeTab === 'withdrawals-processing') {
+                      const wdUserId = item.user?._id ?? item.user?.id ?? item.user_id
                       return (
-                        <tr key={id || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        <tr key={wdUserId || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                           <td style={{ padding: '10px 12px' }}>{item.user?.username || item.user_id || '—'}</td>
                           <td style={{ padding: '10px 12px', fontWeight: 600 }}>{renderAmount(item.amount)}</td>
                           <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -218,9 +225,10 @@ export default function FinancialsPage() {
                         </tr>
                       )
                     } else {
+                      const ledgerId = item._id ?? item.id
                       return (
-                        <tr key={id || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{id}</td>
+                        <tr key={ledgerId || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                          <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>{ledgerId}</td>
                           <td style={{ padding: '10px 12px' }}>{item.description ?? item.type ?? '—'}</td>
                           <td style={{ padding: '10px 12px', fontWeight: 600 }}>{renderAmount(item.amount)}</td>
                           <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>
