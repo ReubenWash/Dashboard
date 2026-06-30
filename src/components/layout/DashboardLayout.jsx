@@ -79,25 +79,28 @@ export default function DashboardLayout() {
           </div>
         </div>
 
-        {sections.map((section) => (
-          <div className="nav-section" key={section}>
-            <div className="nav-label">{section}</div>
-            {NAV.filter((n) => n.section === section).map((n) => (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.to === "/"}
-                className={({ isActive }) =>
-                  `nav-item${isActive ? " active" : ""}`
-                }
-                onClick={() => setSidebarOpen(false)}
-              >
-                <i className={`bi ${n.icon} nav-icon`} />
-                {n.label}
-              </NavLink>
-            ))}
-          </div>
-        ))}
+        {/* ─── SCROLLABLE NAV AREA ────────────────────────────── */}
+        <div className="sidebar-scroll">
+          {sections.map((section) => (
+            <div className="nav-section" key={section}>
+              <div className="nav-label">{section}</div>
+              {NAV.filter((n) => n.section === section).map((n) => (
+                <NavLink
+                  key={n.to}
+                  to={n.to}
+                  end={n.to === "/"}
+                  className={({ isActive }) =>
+                    `nav-item${isActive ? " active" : ""}`
+                  }
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <i className={`bi ${n.icon} nav-icon`} />
+                  {n.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </div>
 
         <div className="sidebar-footer">
           <div className="admin-info">
