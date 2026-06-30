@@ -57,19 +57,23 @@ function deriveStats(users) {
   }
 }
 
+// ── Helper: safely get nested value ──────────────────────────────────────────
+function getNestedValue(obj, path, fallback = '—') {
+  if (!obj) return fallback
+  const keys = path.split('.')
+  let current = obj
+  for (const key of keys) {
+    if (current === undefined || current === null) return fallback
+    current = current[key]
+  }
+  return current !== undefined && current !== null ? current : fallback
+}
+
 // ── Helper: safely format currency ────────────────────────────────────────────
 function formatCurrency(value) {
   if (value === undefined || value === null) return '—'
   const num = typeof value === 'number' ? value : parseFloat(value)
   return isNaN(num) ? '—' : `$${num.toFixed(2)}`
-}
-
-// ── Helper: safely get value from overview with fallback ──────────────────────
-function getOverviewValue(overview, key, fallback = '—') {
-  if (!overview) return fallback
-  const value = overview[key]
-  if (value === undefined || value === null) return fallback
-  return value
 }
 
 export default function DashboardPage() {
@@ -114,10 +118,8 @@ export default function DashboardPage() {
     getDashboardOverview(currentRole)
       .then(overviewData => {
         setOverview(overviewData)
-        // ─── DEBUG: Log the full response ──────────────────────────────────────
         console.log('📊 Backend Overview Response:', JSON.stringify(overviewData, null, 2))
         console.log('📊 Overview keys:', Object.keys(overviewData || {}))
-        // ─────────────────────────────────────────────────────────────────────────
       })
       .catch(err => {
         console.warn('Dashboard overview not available:', err.message)
@@ -137,89 +139,56 @@ export default function DashboardPage() {
     )
   })
 
-  // ── Build stat cards from overview or fallback ──────────────────────────────
-  // These are the field names we're trying to read from the overview response
-  // You can adjust these based on what your backend actually returns
+  // ── Build stat cards from overview ─────────────────────────────────────────
+  // Using the actual structure from the backend response
   const STAT_CARDS = overview ? [
     { 
       label: 'Total Users', 
       icon: 'bi-people-fill', 
       colorClass: 'text-accent', 
-      value: getOverviewValue(overview, 'total_users') ?? 
-             getOverviewValue(overview, 'userCount') ??
-             getOverviewValue(overview, 'totalUsers') ??
-             stats.total 
+      value: stats.total 
     },
     { 
       label: 'DAU (Daily Active)', 
       icon: 'bi-bar-chart-fill', 
       colorClass: 'text-success', 
-      value: getOverviewValue(overview, 'dau') ??
-             getOverviewValue(overview, 'daily_active_users') ??
-             getOverviewValue(overview, 'dailyActive') ??
-             getOverviewValue(overview, 'active_users_today') ??
-             '—' 
+      value: getNestedValue(overview, 'dashboard.daily_active_users', '—')
     },
     { 
       label: 'MAU (Monthly Active)', 
       icon: 'bi-graph-up', 
       colorClass: 'text-accent', 
-      value: getOverviewValue(overview, 'mau') ??
-             getOverviewValue(overview, 'monthly_active_users') ??
-             getOverviewValue(overview, 'monthlyActive') ??
-             getOverviewValue(overview, 'active_users_month') ??
-             '—' 
+      value: getNestedValue(overview, 'dashboard.monthly_active_users', '—')
+    },
+    { 
+      label: 'New Signups', 
+      icon: 'bi-person-plus-fill', 
+      colorClass: 'text-accent', 
+      value: getNestedValue(overview, 'dashboard.new_signups', 0)
     },
     { 
       label: 'Active Streams', 
       icon: 'bi-broadcast', 
       colorClass: 'text-warn', 
-      value: getOverviewValue(overview, 'active_streams') ??
-             getOverviewValue(overview, 'live_streams') ??
-             getOverviewValue(overview, 'activeStreams') ??
-             getOverviewValue(overview, 'liveStreams') ??
-             0 
+      value: getNestedValue(overview, 'dashboard.active_streams', 0)
     },
     { 
       label: 'Total Posts', 
       icon: 'bi-file-earmark', 
       colorClass: 'text-accent', 
-      value: getOverviewValue(overview, 'total_posts') ??
-             getOverviewValue(overview, 'total_content') ??
-             getOverviewValue(overview, 'totalContent') ??
-             getOverviewValue(overview, 'content_count') ??
-             getOverviewValue(overview, 'postsCount') ??
-             '—' 
+      value: getNestedValue(overview, 'dashboard.total_posts', '—')
     },
     { 
       label: 'Mod Queue', 
       icon: 'bi-clock-history', 
       colorClass: 'text-warn', 
-      value: getOverviewValue(overview, 'moderation_queue') ??
-             getOverviewValue(overview, 'pending_reports') ??
-             getOverviewValue(overview, 'moderationQueue') ??
-             getOverviewValue(overview, 'pendingReports') ??
-             getOverviewValue(overview, 'reports_pending') ??
-             0 
+      value: getNestedValue(overview, 'dashboard.moderation_queue', 0)
     },
     { 
-      label: 'Revenue', 
-      icon: 'bi-coin', 
-      colorClass: 'text-success', 
-      value: formatCurrency(
-        overview.revenue ?? 
-        overview.total_revenue ?? 
-        overview.platform_revenue ??
-        overview.totalRevenue ??
-        overview.platformRevenue ??
-        null
-      )
-    },
-    { 
-      label: 'Banned', 
-      icon: 'bi-slash-circle-fill', 
+      label: 'Pending Reports', 
+      icon: 'bi-flag-fill', 
       colorClass: 'text-danger2', 
-      value: stats.banned 
+      value: getNestedValue(overview, 'dashboard.pending_reports', 0)
     },
   ] : [
     { label: 'Total Users',  icon: 'bi-people-fill',       colorClass: 'text-accent',  value: stats.total },
