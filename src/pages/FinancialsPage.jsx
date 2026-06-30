@@ -64,11 +64,11 @@ export default function FinancialsPage() {
       addToast('Please enter a valid amount (must be > 0)', 'warning')
       return
     }
-    if (!confirm(`Mark ${amount ? '$' + Number(amount).toFixed(2) : 'all earnings'} as paid?`)) return
+    if (!confirm(`Mark ${amount ? '₵' + Number(amount).toFixed(2) : 'all earnings'} as paid?`)) return
     setActionLoading(prev => ({ ...prev, [userId]: true }))
     try {
       await markEarningsPaid(userId, amount, role)
-      addToast(`Earnings ${amount ? 'of $' + Number(amount).toFixed(2) : ''} marked as paid`, 'success')
+      addToast(`Earnings ${amount ? 'of ₵' + Number(amount).toFixed(2) : ''} marked as paid`, 'success')
       fetchData()
     } catch (e) {
       addToast(e.message, 'error')
@@ -79,7 +79,7 @@ export default function FinancialsPage() {
 
   const renderAmount = (amount) => {
     if (amount === undefined || amount === null) return '—'
-    return `$${Number(amount).toFixed(2)}`
+    return `₵${Number(amount).toFixed(2)}`
   }
 
   return (
@@ -182,6 +182,7 @@ export default function FinancialsPage() {
                                   min="0"
                                   max={balance}
                                   className="form-control form-control-sm"
+                                  style={{ width: 90, fontSize: 12 }}
                                   defaultValue={balance}
                                   ref={(el) => {
                                     if (el) el.dataset.userId = userId

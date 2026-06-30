@@ -73,7 +73,7 @@ function getNestedValue(obj, path, fallback = '—') {
 function formatCurrency(value) {
   if (value === undefined || value === null) return '—'
   const num = typeof value === 'number' ? value : parseFloat(value)
-  return isNaN(num) ? '—' : `$${num.toFixed(2)}`
+  return isNaN(num) ? '—' : `₵${num.toFixed(2)}`
 }
 
 export default function DashboardPage() {

@@ -35,11 +35,11 @@ export default function AnalyticsPage() {
     return num.toString()
   }
 
-  const formatCurrency = (value) => {
-    if (value === undefined || value === null) return '—'
-    const num = typeof value === 'number' ? value : parseFloat(value)
-    return isNaN(num) ? '—' : `$${num.toFixed(2)}`
-  }
+ const formatCurrency = (value) => {
+  if (value === undefined || value === null) return '—'
+  const num = typeof value === 'number' ? value : parseFloat(value)
+  return isNaN(num) ? '—' : `₵${num.toFixed(2)}`
+}
 
   const getNestedValue = (obj, path, fallback = '—') => {
     if (!obj) return fallback
