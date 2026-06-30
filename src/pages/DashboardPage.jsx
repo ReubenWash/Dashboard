@@ -76,12 +76,9 @@ export default function DashboardPage() {
   useEffect(() => {
     const currentRole = role ?? getRole()
     
-    Promise.all([
-      getAllUsers(currentRole),
-      getDashboardOverview(currentRole)
-    ])
-      .then(([usersData, overviewData]) => {
-        // Process users
+    // Fetch users first (always works)
+    getAllUsers(currentRole)
+      .then(usersData => {
         const list = Array.isArray(usersData)
           ? usersData
           : Array.isArray(usersData?.users)
@@ -91,12 +88,22 @@ export default function DashboardPage() {
               : []
         setUsers(list)
         setStats(deriveStats(list))
-        
-        // Process overview
+      })
+      .catch(err => {
+        console.error('Failed to fetch users:', err)
+        setStatsError('Failed to load users. Please refresh.')
+      })
+      .finally(() => setStatsLoading(false))
+
+    // Then try to fetch overview (but don't crash if it fails)
+    getDashboardOverview(currentRole)
+      .then(overviewData => {
         setOverview(overviewData)
       })
-      .catch(err => setStatsError(err.message))
-      .finally(() => setStatsLoading(false))
+      .catch(err => {
+        console.warn('Dashboard overview not available:', err.message)
+        // Don't set error state - just use user stats
+      })
   }, [role])
 
   // ── Filter users ─────────────────────────────────────────────────────────────
