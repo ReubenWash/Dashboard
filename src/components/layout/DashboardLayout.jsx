@@ -5,56 +5,26 @@ import { useTheme } from "../../context/ThemeContext";
 
 const NAV = [
   { to: "/", icon: "bi-grid-1x2", label: "Dashboard", section: "Navigation" },
-  {
-    to: "/lookup",
-    icon: "bi-search",
-    label: "User Lookup",
-    section: "Navigation",
-  },
-  {
-    to: "/moderate",
-    icon: "bi-shield-check",
-    label: "Moderate User",
-    section: "Moderation",
-  },
-  {
-    to: "/edit",
-    icon: "bi-pencil-square",
-    label: "Edit Profile",
-    section: "Moderation",
-  },
-  // ─── NEW ────────────────────────────────────────────────
-  {
-    to: "/content",
-    icon: "bi-file-earmark-text",
-    label: "Content Moderation",
-    section: "Content",
-  },
-  {
-    to: "/streams",
-    icon: "bi-broadcast",
-    label: "Live Streams",
-    section: "Content",
-  },
-  {
-    to: "/finances",
-    icon: "bi-wallet2",
-    label: "Financials",
-    section: "Finance",
-  },
-  {
-    to: "/settings",
-    icon: "bi-gear",
-    label: "Settings",
-    section: "System",
-  },
+  { to: "/activity", icon: "bi-clock-history", label: "Activity Log", section: "Navigation" },
+  { to: "/analytics", icon: "bi-graph-up", label: "Analytics", section: "Navigation" },
+  { to: "/lookup", icon: "bi-search", label: "User Lookup", section: "Navigation" },
+  { to: "/moderate", icon: "bi-shield-check", label: "Moderate User", section: "Moderation" },
+  { to: "/edit", icon: "bi-pencil-square", label: "Edit Profile", section: "Moderation" },
+  { to: "/email", icon: "bi-envelope", label: "Send Email", section: "Moderation" },
+  { to: "/content", icon: "bi-file-earmark-text", label: "Content Moderation", section: "Content" },
+  { to: "/streams", icon: "bi-broadcast", label: "Live Streams", section: "Content" },
+  { to: "/finances", icon: "bi-wallet2", label: "Financials", section: "Finance" },
+  { to: "/settings", icon: "bi-gear", label: "Settings", section: "System" },
 ];
 
 const PAGE_TITLES = {
   "/": "Dashboard",
+  "/activity": "Activity Log",
+  "/analytics": "Product Analytics",
   "/lookup": "User Lookup",
   "/moderate": "Moderate User",
   "/edit": "Edit Profile",
+  "/email": "Send Email",
   "/content": "Content Moderation",
   "/streams": "Live Streams",
   "/finances": "Financials",
