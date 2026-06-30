@@ -21,8 +21,10 @@ export default function SendEmailPage() {
       const list = Array.isArray(data) ? data : data?.users ?? data?.data ?? []
       setUsers(list)
       setShowUserSelect(true)
+      console.log('📊 Users loaded for email:', list.length)
     } catch (e) {
       addToast(e.message, 'error')
+      console.error('Error fetching users:', e)
     }
   }
 
@@ -35,12 +37,22 @@ export default function SendEmailPage() {
     
     setLoading(true)
     try {
-      await sendUserEmail(email, subject, message, role)
+      console.log('📧 Sending email to:', email)
+      console.log('📧 Subject:', subject)
+      console.log('📧 Message length:', message.length)
+      
+      const response = await sendUserEmail(email, subject, message, role)
+      
+      // ─── DEBUG: Log the response ──────────────────────────────────────────
+      console.log('📧 Email Send Response:', JSON.stringify(response, null, 2))
+      console.log('📧 Response keys:', Object.keys(response || {}))
+      
       addToast(`Email sent to ${email} successfully!`, 'success')
       setEmail('')
       setSubject('')
       setMessage('')
     } catch (e) {
+      console.error('❌ Failed to send email:', e)
       addToast(e.message, 'error')
     } finally {
       setLoading(false)
@@ -52,6 +64,7 @@ export default function SendEmailPage() {
     setShowUserSelect(false)
     setSearchTerm('')
     addToast(`Selected: ${user.full_name || user.username}`, 'info')
+    console.log('👤 Selected user:', user.full_name || user.username, user.email)
   }
 
   const filteredUsers = users.filter(u => 
