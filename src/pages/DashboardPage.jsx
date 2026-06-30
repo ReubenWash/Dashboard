@@ -57,6 +57,13 @@ function deriveStats(users) {
   }
 }
 
+// ── Helper: safely format currency ────────────────────────────────────────────
+function formatCurrency(value) {
+  if (value === undefined || value === null) return '—'
+  const num = typeof value === 'number' ? value : parseFloat(value)
+  return isNaN(num) ? '—' : `$${num.toFixed(2)}`
+}
+
 export default function DashboardPage() {
   const { user, role } = useAuth()
   const navigate = useNavigate()
@@ -102,7 +109,6 @@ export default function DashboardPage() {
       })
       .catch(err => {
         console.warn('Dashboard overview not available:', err.message)
-        // Don't set error state - just use user stats
       })
   }, [role])
 
@@ -127,7 +133,7 @@ export default function DashboardPage() {
     { label: 'Active Streams',icon: 'bi-broadcast',         colorClass: 'text-warn',      value: overview.active_streams ?? 0 },
     { label: 'Total Posts',   icon: 'bi-file-earmark',      colorClass: 'text-accent',    value: overview.total_posts ?? '—' },
     { label: 'Mod Queue',     icon: 'bi-clock-history',     colorClass: 'text-warn',      value: overview.moderation_queue ?? 0 },
-    { label: 'Revenue',       icon: 'bi-coin',              colorClass: 'text-success',   value: overview.revenue ? `$${overview.revenue.toFixed(2)}` : '—' },
+    { label: 'Revenue',       icon: 'bi-coin',              colorClass: 'text-success',   value: formatCurrency(overview.revenue) },
     { label: 'Banned',        icon: 'bi-slash-circle-fill', colorClass: 'text-danger2',   value: stats.banned },
   ] : [
     { label: 'Total Users',  icon: 'bi-people-fill',       colorClass: 'text-accent',  value: stats.total },
