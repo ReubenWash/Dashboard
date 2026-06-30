@@ -19,9 +19,16 @@ export default function AnalyticsPage() {
         getProductAnalytics(role),
         getDashboardOverview(role)
       ])
+      
+      // ─── DEBUG: Log the responses ──────────────────────────────────────────
+      console.log('📊 Product Analytics Response:', JSON.stringify(analyticsData, null, 2))
+      console.log('📊 Analytics keys:', Object.keys(analyticsData || {}))
+      console.log('📊 Overview Data (for reference):', JSON.stringify(overviewData, null, 2))
+      
       setAnalytics(analyticsData)
       setOverview(overviewData)
     } catch (e) {
+      console.error('Analytics fetch error:', e)
       addToast(e.message, 'error')
     } finally {
       setLoading(false)
@@ -37,6 +44,18 @@ export default function AnalyticsPage() {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M'
     if (num >= 1000) return (num / 1000).toFixed(1) + 'K'
     return num.toString()
+  }
+
+  // Helper to safely get nested value
+  const getNestedValue = (obj, path, fallback = '—') => {
+    if (!obj) return fallback
+    const keys = path.split('.')
+    let current = obj
+    for (const key of keys) {
+      if (current === undefined || current === null) return fallback
+      current = current[key]
+    }
+    return current !== undefined && current !== null ? current : fallback
   }
 
   const MetricCard = ({ label, value, change, icon, color }) => (
@@ -109,41 +128,38 @@ export default function AnalyticsPage() {
                 <div className="col-6 col-md-3">
                   <MetricCard 
                     label="Total Users" 
-                    value={analytics.total_users || overview?.total_users || 0}
+                    value={getNestedValue(analytics, 'total_users') ?? getNestedValue(overview, 'dashboard.total_users') ?? getNestedValue(overview, 'total_users') ?? '—'}
                     icon="bi-people-fill"
                     color="var(--accent)"
                   />
                 </div>
                 <div className="col-6 col-md-3">
                   <MetricCard 
-                    label="Active Users (DAU)" 
-                    value={analytics.dau || overview?.dau || 0}
-                    change={analytics.dau_change}
+                    label="DAU" 
+                    value={getNestedValue(analytics, 'dau') ?? getNestedValue(overview, 'dashboard.daily_active_users') ?? '—'}
                     icon="bi-bar-chart-fill"
                     color="var(--success)"
                   />
                 </div>
                 <div className="col-6 col-md-3">
                   <MetricCard 
-                    label="New Signups" 
-                    value={analytics.new_signups || 0}
-                    change={analytics.signups_change}
-                    icon="bi-person-plus-fill"
+                    label="MAU" 
+                    value={getNestedValue(analytics, 'mau') ?? getNestedValue(overview, 'dashboard.monthly_active_users') ?? '—'}
+                    icon="bi-graph-up"
                     color="var(--accent)"
                   />
                 </div>
                 <div className="col-6 col-md-3">
                   <MetricCard 
                     label="Revenue" 
-                    value={analytics.revenue ? `$${analytics.revenue.toFixed(2)}` : overview?.revenue ? `$${overview.revenue.toFixed(2)}` : '$0'}
-                    change={analytics.revenue_change}
+                    value={getNestedValue(analytics, 'revenue') ?? getNestedValue(overview, 'revenue.total') ?? '$0'}
                     icon="bi-coin"
                     color="var(--success)"
                   />
                 </div>
               </div>
 
-              {/* Content stats */}
+              {/* Additional metrics – try to extract from analytics */}
               <div className="row g-3 mb-4">
                 <div className="col-12 col-md-6">
                   <div className="card" style={{ padding: '16px 20px', background: 'var(--bg-hover)' }}>
@@ -153,26 +169,23 @@ export default function AnalyticsPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Videos</div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(analytics.total_videos || 0)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'videos_count') ?? getNestedValue(analytics, 'videos') ?? '—')}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Images</div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(analytics.total_images || 0)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'images_count') ?? getNestedValue(analytics, 'images') ?? '—')}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Comments</div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(analytics.total_comments || 0)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'comments_count') ?? getNestedValue(analytics, 'comments') ?? '—')}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Reports</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: analytics.pending_reports > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                          {formatNumber(analytics.pending_reports || 0)} pending
-                        </div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'reports_pending') ?? getNestedValue(analytics, 'pending_reports') ?? getNestedValue(overview, 'dashboard.pending_reports') ?? '—')}</div>
                       </div>
                     </div>
                   </div>
                 </div>
-
                 <div className="col-12 col-md-6">
                   <div className="card" style={{ padding: '16px 20px', background: 'var(--bg-hover)' }}>
                     <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, marginBottom: 8 }}>
@@ -182,25 +195,25 @@ export default function AnalyticsPage() {
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Deposits</div>
                         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--success)' }}>
-                          {analytics.total_deposits ? `$${analytics.total_deposits.toFixed(2)}` : '$0'}
+                          {formatNumber(getNestedValue(analytics, 'total_deposits') ?? getNestedValue(analytics, 'deposits') ?? '—')}
                         </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Payouts</div>
                         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--warning)' }}>
-                          {analytics.total_payouts ? `$${analytics.total_payouts.toFixed(2)}` : '$0'}
+                          {formatNumber(getNestedValue(analytics, 'total_payouts') ?? getNestedValue(analytics, 'payouts') ?? '—')}
                         </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Pending Withdrawals</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: analytics.pending_withdrawals > 0 ? 'var(--warning)' : 'var(--success)' }}>
-                          {formatNumber(analytics.pending_withdrawals || 0)}
+                        <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--warning)' }}>
+                          {formatNumber(getNestedValue(analytics, 'pending_withdrawals') ?? '—')}
                         </div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Platform Revenue</div>
                         <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
-                          {analytics.platform_revenue ? `$${analytics.platform_revenue.toFixed(2)}` : '$0'}
+                          {formatNumber(getNestedValue(analytics, 'platform_revenue') ?? getNestedValue(analytics, 'revenue') ?? '—')}
                         </div>
                       </div>
                     </div>
@@ -218,20 +231,20 @@ export default function AnalyticsPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Views</div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(analytics.total_views || 0)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'total_views') ?? getNestedValue(analytics, 'views') ?? '—')}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Likes</div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(analytics.total_likes || 0)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'total_likes') ?? getNestedValue(analytics, 'likes') ?? '—')}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Shares</div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(analytics.total_shares || 0)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{formatNumber(getNestedValue(analytics, 'total_shares') ?? getNestedValue(analytics, 'shares') ?? '—')}</div>
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Active Streams</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, color: overview?.active_streams > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
-                          {overview?.active_streams || 0}
+                        <div style={{ fontSize: 18, fontWeight: 700, color: getNestedValue(overview, 'dashboard.active_streams', 0) > 0 ? 'var(--success)' : 'var(--text-muted)' }}>
+                          {getNestedValue(overview, 'dashboard.active_streams', 0)}
                         </div>
                       </div>
                     </div>

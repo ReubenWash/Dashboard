@@ -16,8 +16,32 @@ export default function ActivityPage() {
     setLoading(true)
     try {
       const data = await getActivityFeed(role)
-      const list = Array.isArray(data) ? data : data?.activities ?? data?.data ?? []
+      // ─── DEBUG: Log the full response ──────────────────────────────────────
+      console.log('📊 Activity Feed Response:', JSON.stringify(data, null, 2))
+      console.log('📊 Activity keys:', Object.keys(data || {}))
+      
+      // Try multiple possible structures
+      let list = []
+      if (Array.isArray(data)) {
+        list = data
+      } else if (data?.activities && Array.isArray(data.activities)) {
+        list = data.activities
+      } else if (data?.data && Array.isArray(data.data)) {
+        list = data.data
+      } else if (data?.items && Array.isArray(data.items)) {
+        list = data.items
+      } else {
+        // If it's an object with numeric keys, convert to array
+        if (data && typeof data === 'object') {
+          const values = Object.values(data)
+          if (values.length > 0 && values.some(v => typeof v === 'object')) {
+            list = values
+          }
+        }
+      }
+      
       setActivities(list)
+      console.log('📊 Parsed activities:', list.length)
     } catch (e) {
       addToast(e.message, 'error')
       setActivities([])
@@ -76,30 +100,51 @@ export default function ActivityPage() {
     return colors[type] ?? 'var(--text-muted)'
   }
 
+  // Extract type from activity object (try multiple fields)
+  const getActivityType = (activity) => {
+    return activity.type ?? activity.action ?? activity.event ?? activity.category ?? 'unknown'
+  }
+
+  // Extract message
+  const getActivityMessage = (activity) => {
+    return activity.message ?? activity.description ?? activity.details ?? activity.text ?? 'Activity'
+  }
+
+  // Extract admin name
+  const getAdminName = (activity) => {
+    return activity.admin_name ?? activity.admin?.name ?? activity.user?.name ?? null
+  }
+
+  // Extract timestamp
+  const getTimestamp = (activity) => {
+    return activity.created_at ?? activity.timestamp ?? activity.date ?? null
+  }
+
   const filteredActivities = activities.filter(a => {
-    if (filter !== 'all' && a.type !== filter) return false
+    const type = getActivityType(a)
+    if (filter !== 'all' && type !== filter) return false
     
     if (dateRange === 'today') {
       const today = new Date().toDateString()
-      const activityDate = a.created_at ? new Date(a.created_at).toDateString() : ''
+      const activityDate = getTimestamp(a) ? new Date(getTimestamp(a)).toDateString() : ''
       return activityDate === today
     }
     if (dateRange === 'week') {
       const weekAgo = new Date()
       weekAgo.setDate(weekAgo.getDate() - 7)
-      const activityDate = a.created_at ? new Date(a.created_at) : new Date(0)
+      const activityDate = getTimestamp(a) ? new Date(getTimestamp(a)) : new Date(0)
       return activityDate >= weekAgo
     }
     if (dateRange === 'month') {
       const monthAgo = new Date()
       monthAgo.setMonth(monthAgo.getMonth() - 1)
-      const activityDate = a.created_at ? new Date(a.created_at) : new Date(0)
+      const activityDate = getTimestamp(a) ? new Date(getTimestamp(a)) : new Date(0)
       return activityDate >= monthAgo
     }
     return true
   })
 
-  const types = [...new Set(activities.map(a => a.type).filter(Boolean))]
+  const types = [...new Set(activities.map(a => getActivityType(a)).filter(Boolean))]
 
   return (
     <>
@@ -156,74 +201,78 @@ export default function ActivityPage() {
           )}
           {!loading && filteredActivities.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {filteredActivities.map((activity, idx) => (
-                <div 
-                  key={activity._id || idx}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 12,
-                    padding: '12px 16px',
-                    borderRadius: 8,
-                    background: 'var(--bg-hover)',
-                    border: '1px solid var(--border-subtle)',
-                    transition: 'background 0.15s',
-                    cursor: 'default',
-                  }}
-                >
-                  <div style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    background: `${getActivityColor(activity.type)}20`,
-                    color: getActivityColor(activity.type),
-                    flexShrink: 0,
-                    fontSize: 16,
-                  }}>
-                    <i className={`bi ${getActivityIcon(activity.type)}`} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 500, fontSize: 13.5 }}>
-                      {activity.message || activity.description || activity.action || 'Activity'}
-                    </div>
-                    {activity.details && (
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
-                        {activity.details}
-                      </div>
-                    )}
-                    {activity.admin_name && (
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                        <i className="bi bi-person me-1" />By: {activity.admin_name}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                      <i className="bi bi-clock me-1" />
-                      {activity.created_at 
-                        ? new Date(activity.created_at).toLocaleString()
-                        : activity.timestamp 
-                          ? new Date(activity.timestamp).toLocaleString()
-                          : '—'}
-                    </div>
-                  </div>
-                  {activity.type && (
-                    <span style={{
-                      padding: '2px 10px',
-                      borderRadius: 20,
-                      fontSize: 10,
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      background: `${getActivityColor(activity.type)}20`,
-                      color: getActivityColor(activity.type),
+              {filteredActivities.map((activity, idx) => {
+                const type = getActivityType(activity)
+                const message = getActivityMessage(activity)
+                const adminName = getAdminName(activity)
+                const timestamp = getTimestamp(activity)
+                const id = activity._id ?? activity.id ?? idx
+
+                return (
+                  <div 
+                    key={id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 12,
+                      padding: '12px 16px',
+                      borderRadius: 8,
+                      background: 'var(--bg-hover)',
+                      border: '1px solid var(--border-subtle)',
+                      transition: 'background 0.15s',
+                      cursor: 'default',
+                    }}
+                  >
+                    <div style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: `${getActivityColor(type)}20`,
+                      color: getActivityColor(type),
                       flexShrink: 0,
+                      fontSize: 16,
                     }}>
-                      {activity.type.replace('_', ' ')}
-                    </span>
-                  )}
-                </div>
-              ))}
+                      <i className={`bi ${getActivityIcon(type)}`} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13.5 }}>
+                        {message}
+                      </div>
+                      {activity.details && (
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>
+                          {activity.details}
+                        </div>
+                      )}
+                      {adminName && (
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                          <i className="bi bi-person me-1" />By: {adminName}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                        <i className="bi bi-clock me-1" />
+                        {timestamp ? new Date(timestamp).toLocaleString() : '—'}
+                      </div>
+                    </div>
+                    {type && type !== 'unknown' && (
+                      <span style={{
+                        padding: '2px 10px',
+                        borderRadius: 20,
+                        fontSize: 10,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        background: `${getActivityColor(type)}20`,
+                        color: getActivityColor(type),
+                        flexShrink: 0,
+                      }}>
+                        {type.replace('_', ' ')}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
