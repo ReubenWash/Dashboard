@@ -170,7 +170,7 @@ export default function FinancialsPage() {
                           </td>
                           <td style={{ padding: '10px 12px' }}>
                             <span style={{ color: item.status === 'paid' ? 'var(--success)' : 'var(--warning)' }}>
-                              {item.status ?? 'unpaid'}j
+                              {item.status ?? 'unpaid'}
                             </span>
                           </td>
                           <td style={{ padding: '10px 12px' }}>
