@@ -7,8 +7,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'https://load-balancer-f8ic.onrender.com',
-        
+        target: 'https://load-balancer-9ovy.onrender.com',
         changeOrigin: true,
         secure: true,
       },

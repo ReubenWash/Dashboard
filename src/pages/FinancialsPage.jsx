@@ -170,7 +170,7 @@ export default function FinancialsPage() {
                           </td>
                           <td style={{ padding: '10px 12px' }}>
                             <span style={{ color: item.status === 'paid' ? 'var(--success)' : 'var(--warning)' }}>
-                              {item.status ?? 'unpaid'}
+                              {item.status ?? 'unpaid'}j
                             </span>
                           </td>
                           <td style={{ padding: '10px 12px' }}>
@@ -182,7 +182,6 @@ export default function FinancialsPage() {
                                   min="0"
                                   max={balance}
                                   className="form-control form-control-sm"
-                                  style={{ width: 90, fontSize: 12 }}
                                   defaultValue={balance}
                                   ref={(el) => {
                                     if (el) el.dataset.userId = userId

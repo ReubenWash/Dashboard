@@ -1,14 +1,23 @@
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
-import { getAllUsers, getRole, resolveId } from '../api/client'
+import { getAllUsers, getRole, resolveId, getDashboardOverview } from '../api/client'
 
+// ── Enhanced Quick Actions ────────────────────────────────────────────────────
 const QUICK_ACTIONS = [
   { label: 'Look Up User',  icon: 'bi-search',        path: '/lookup',   color: 'var(--accent)' },
   { label: 'Moderate User', icon: 'bi-shield-check',  path: '/moderate', color: 'var(--warning)' },
   { label: 'Edit Profile',  icon: 'bi-pencil-square', path: '/edit',     color: 'var(--success)' },
+  { label: 'Content Mod',   icon: 'bi-file-earmark-text', path: '/content', color: '#d455e0' },
+  { label: 'Financials',    icon: 'bi-wallet2',       path: '/finances', color: 'var(--success)' },
+  { label: 'Live Streams',  icon: 'bi-broadcast',     path: '/streams',  color: 'var(--accent)' },
+  { label: 'Activity Log',  icon: 'bi-clock-history', path: '/activity', color: 'var(--text-secondary)' },
+  { label: 'Analytics',     icon: 'bi-graph-up',      path: '/analytics',color: 'var(--accent)' },
+  { label: 'Send Email',    icon: 'bi-envelope',      path: '/email',    color: '#4f8ef7' },
+  { label: 'Settings',      icon: 'bi-gear',          path: '/settings', color: 'var(--text-muted)' },
 ]
 
+// ── Status helpers ────────────────────────────────────────────────────────────
 function getStatus(user) {
   if (user.is_banned    === true) return 'banned'
   if (user.is_suspended === true) return 'suspended'
@@ -55,30 +64,42 @@ export default function DashboardPage() {
   const isAdmin     = role !== 'moderator'
   const displayName = user?.admin_name ?? user?.moderator_name ?? user?.name ?? 'Staff'
 
+  // ── State ──────────────────────────────────────────────────────────────────────
   const [stats,        setStats]        = useState({ total: null, banned: null, suspended: null, muted: null })
+  const [overview,     setOverview]     = useState(null)
   const [users,        setUsers]        = useState([])
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError,   setStatsError]   = useState(null)
   const [search,       setSearch]       = useState('')
 
+  // ── Fetch users + overview ──────────────────────────────────────────────────
   useEffect(() => {
     const currentRole = role ?? getRole()
-    getAllUsers(currentRole)
-      .then(raw => {
-        const list = Array.isArray(raw)
-          ? raw
-          : Array.isArray(raw?.users)
-            ? raw.users
-            : Array.isArray(raw?.data)
-              ? raw.data
+    
+    Promise.all([
+      getAllUsers(currentRole),
+      getDashboardOverview(currentRole)
+    ])
+      .then(([usersData, overviewData]) => {
+        // Process users
+        const list = Array.isArray(usersData)
+          ? usersData
+          : Array.isArray(usersData?.users)
+            ? usersData.users
+            : Array.isArray(usersData?.data)
+              ? usersData.data
               : []
         setUsers(list)
         setStats(deriveStats(list))
+        
+        // Process overview
+        setOverview(overviewData)
       })
       .catch(err => setStatsError(err.message))
       .finally(() => setStatsLoading(false))
   }, [role])
 
+  // ── Filter users ─────────────────────────────────────────────────────────────
   const filtered = users.filter(u => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
@@ -91,7 +112,17 @@ export default function DashboardPage() {
     )
   })
 
-  const STAT_CARDS = [
+  // ── Build stat cards from overview or fallback ──────────────────────────────
+  const STAT_CARDS = overview ? [
+    { label: 'Total Users',   icon: 'bi-people-fill',       colorClass: 'text-accent',   value: overview.total_users ?? stats.total },
+    { label: 'DAU',           icon: 'bi-bar-chart-fill',    colorClass: 'text-success',   value: overview.dau ?? '—' },
+    { label: 'MAU',           icon: 'bi-graph-up',          colorClass: 'text-accent',    value: overview.mau ?? '—' },
+    { label: 'Active Streams',icon: 'bi-broadcast',         colorClass: 'text-warn',      value: overview.active_streams ?? 0 },
+    { label: 'Total Posts',   icon: 'bi-file-earmark',      colorClass: 'text-accent',    value: overview.total_posts ?? '—' },
+    { label: 'Mod Queue',     icon: 'bi-clock-history',     colorClass: 'text-warn',      value: overview.moderation_queue ?? 0 },
+    { label: 'Revenue',       icon: 'bi-coin',              colorClass: 'text-success',   value: overview.revenue ? `$${overview.revenue.toFixed(2)}` : '—' },
+    { label: 'Banned',        icon: 'bi-slash-circle-fill', colorClass: 'text-danger2',   value: stats.banned },
+  ] : [
     { label: 'Total Users',  icon: 'bi-people-fill',       colorClass: 'text-accent',  value: stats.total },
     { label: 'Banned Users', icon: 'bi-slash-circle-fill', colorClass: 'text-danger2', value: stats.banned },
     { label: 'Suspended',    icon: 'bi-pause-circle-fill', colorClass: 'text-warn',    value: stats.suspended },
@@ -100,10 +131,11 @@ export default function DashboardPage() {
 
   function renderStatVal(v) {
     if (statsLoading) return <div style={{ width: 48, height: 22, borderRadius: 4, background: 'var(--bg-hover)', animation: 'pulse 1.4s ease-in-out infinite' }} />
-    if (statsError || v === null) return '—'
+    if (statsError || v === null || v === undefined) return '—'
     return v
   }
 
+  // ── Navigation helpers ──────────────────────────────────────────────────────
   function goLookup(u)   { navigate(`/lookup?id=${resolveId(u) ?? ''}`) }
   function goModerate(u) { navigate(`/moderate?id=${resolveId(u) ?? ''}`) }
   function goEdit(u)     { navigate(`/edit?id=${resolveId(u) ?? ''}`) }
@@ -121,15 +153,19 @@ export default function DashboardPage() {
         .act-btn:hover { border-color: var(--accent); color: var(--accent); }
         .act-btn.warn:hover { border-color: var(--warning); color: var(--warning); }
         .act-btn.success:hover { border-color: var(--success); color: var(--success); }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+        @media (max-width: 768px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+        .quick-actions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+        @media (max-width: 480px) { .quick-actions-grid { grid-template-columns: repeat(2, 1fr); } }
       `}</style>
 
       {/* Welcome banner */}
       <div className="card mb-4" style={{ padding: '28px', background: 'linear-gradient(120deg, var(--bg-card) 60%, var(--accent-glow) 100%)', borderLeft: '3px solid var(--accent)' }}>
         <div className="d-flex align-items-center justify-content-between flex-wrap gap-3">
           <div>
-            <h4 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, marginBottom: 4 }}>Welcome back, {displayName} </h4>
+            <h4 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, marginBottom: 4 }}>Welcome back, {displayName} 👋</h4>
             <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, marginBottom: 0 }}>
-              Signed in as <span className={`role-pill ${isAdmin ? 'admin' : 'moderator'}`}>{isAdmin ? 'Admin' : 'Moderator'}</span>. Use the sidebar to manage users.
+              Signed in as <span className={`role-pill ${isAdmin ? 'admin' : 'moderator'}`}>{isAdmin ? 'Admin' : 'Moderator'}</span>. Here's what's happening on your platform.
             </p>
           </div>
           <div style={{ width: 52, height: 52, background: 'var(--accent)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: '#fff', fontFamily: 'Syne, sans-serif', flexShrink: 0 }}>
@@ -139,14 +175,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="row g-3 mb-4">
+      <div className="stat-grid mb-4">
         {STAT_CARDS.map(s => (
-          <div className="col-6 col-lg-3" key={s.label}>
-            <div className="stat-card">
-              <div className={`stat-icon ${s.colorClass}`}><i className={`bi ${s.icon}`} /></div>
-              <div className={`stat-val ${s.colorClass}`}>{renderStatVal(s.value)}</div>
-              <div className="stat-label">{s.label}</div>
-            </div>
+          <div className="stat-card" key={s.label}>
+            <div className={`stat-icon ${s.colorClass}`}><i className={`bi ${s.icon}`} /></div>
+            <div className={`stat-val ${s.colorClass}`}>{renderStatVal(s.value)}</div>
+            <div className="stat-label">{s.label}</div>
           </div>
         ))}
       </div>
@@ -277,18 +311,30 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick actions */}
+      {/* Quick Actions */}
       <div className="card mb-4">
         <div className="card-header-bar"><span className="card-title">Quick Actions</span></div>
         <div className="card-body-pad">
-          <div className="row g-3">
+          <div className="quick-actions-grid">
             {QUICK_ACTIONS.map(a => (
-              <div className="col-12 col-md-4" key={a.label}>
-                <button className="btn btn-outline-secondary w-100 py-3" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, height: '100%' }} onClick={() => navigate(a.path)}>
-                  <i className={`bi ${a.icon}`} style={{ fontSize: 24, color: a.color }} />
-                  <span style={{ fontWeight: 600, fontSize: 14 }}>{a.label}</span>
-                </button>
-              </div>
+              <button
+                key={a.label}
+                className="btn btn-outline-secondary"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '16px 8px',
+                  height: '100%',
+                  minHeight: 80,
+                  fontSize: 12,
+                }}
+                onClick={() => navigate(a.path)}
+              >
+                <i className={`bi ${a.icon}`} style={{ fontSize: 22, color: a.color }} />
+                <span style={{ fontWeight: 600 }}>{a.label}</span>
+              </button>
             ))}
           </div>
         </div>
