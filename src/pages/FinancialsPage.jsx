@@ -25,12 +25,17 @@ export default function FinancialsPage() {
     setLoading(true)
     try {
       let data
+      let endpointName = ''
+      
       if (activeTab === 'earnings') {
         data = await getEarningsUsers('unpaid', role)
+        endpointName = 'earnings/users?status=unpaid'
       } else if (activeTab === 'withdrawals-pending') {
         data = await getWithdrawals('pending', role)
+        endpointName = 'withdrawals/pending'
       } else if (activeTab === 'withdrawals-processing') {
         data = await getWithdrawals('processing', role)
+        endpointName = 'withdrawals/processing'
       } else {
         const collectionMap = {
           ledger: 'ledger',
@@ -38,10 +43,39 @@ export default function FinancialsPage() {
           'platform-revenue': 'platform-revenue',
         }
         data = await getFinancialCollection(collectionMap[activeTab], {}, role)
+        endpointName = `collections/${collectionMap[activeTab]}`
       }
-      const list = Array.isArray(data) ? data : data?.data ?? data?.items ?? data?.users ?? []
+      
+      // ─── DEBUG: Log the response ──────────────────────────────────────────────
+      console.log(`📊 Financial Data (${endpointName}):`, JSON.stringify(data, null, 2))
+      console.log(`📊 Data keys:`, Object.keys(data || {}))
+      
+      // Try to extract an array from the response
+      let list = []
+      if (Array.isArray(data)) {
+        list = data
+      } else if (data?.data && Array.isArray(data.data)) {
+        list = data.data
+      } else if (data?.items && Array.isArray(data.items)) {
+        list = data.items
+      } else if (data?.users && Array.isArray(data.users)) {
+        list = data.users
+      } else if (data?.records && Array.isArray(data.records)) {
+        list = data.records
+      } else {
+        // If it's an object with numeric keys, convert to array
+        if (data && typeof data === 'object') {
+          const values = Object.values(data)
+          if (values.length > 0 && values.some(v => typeof v === 'object')) {
+            list = values
+          }
+        }
+      }
+      
+      console.log(`📊 Parsed items (${activeTab}):`, list.length)
       setItems(list)
     } catch (e) {
+      console.error(`Error fetching ${activeTab}:`, e)
       addToast(e.message, 'error')
       setItems([])
     } finally {
@@ -53,9 +87,15 @@ export default function FinancialsPage() {
     fetchData()
   }, [activeTab])
 
-  // Helper to get the user ID from various possible fields
+  // ── Helper to get user ID from various possible fields ──
   const getUserId = (item) => {
-    return item?._id ?? item?.id ?? item?.user_id ?? item?.user?._id ?? item?.user?.id ?? null
+    return item?._id ?? 
+           item?.id ?? 
+           item?.user_id ?? 
+           item?.userId ?? 
+           item?.user?._id ?? 
+           item?.user?.id ?? 
+           null
   }
 
   const handleMarkPaid = async (userId, amount) => {
@@ -87,6 +127,13 @@ export default function FinancialsPage() {
       <div className="card mb-4">
         <div className="card-header-bar">
           <span className="card-title"><i className="bi bi-wallet2 me-2 text-accent" />Financials</span>
+          <button 
+            className="btn btn-sm btn-outline-secondary" 
+            onClick={fetchData}
+            disabled={loading}
+          >
+            <i className={`bi bi-arrow-clockwise ${loading ? 'spinning' : ''}`} />
+          </button>
         </div>
         <div className="card-body-pad">
           {/* Tabs */}
@@ -148,7 +195,6 @@ export default function FinancialsPage() {
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                    // Use custom getUserId instead of resolveId because earnings might have user_id
                     const userId = getUserId(item)
                     const balance = item.amount ?? item.balance ?? 0
                     const emailVerified = item.is_email_verified === true
@@ -182,6 +228,7 @@ export default function FinancialsPage() {
                                   min="0"
                                   max={balance}
                                   className="form-control form-control-sm"
+                                  style={{ width: 90, fontSize: 12 }}
                                   defaultValue={balance}
                                   ref={(el) => {
                                     if (el) el.dataset.userId = userId
@@ -243,7 +290,10 @@ export default function FinancialsPage() {
           )}
         </div>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinning { animation: spin 1s linear infinite; }
+      `}</style>
     </>
   )
 }
