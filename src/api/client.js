@@ -1,5 +1,5 @@
 /**
- * eVibeX Admin API Client
+ * eVibeX Admin API Client – with Caching
  */
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -31,7 +31,80 @@ export function resolveId(user) {
   return user?._id ?? user?.id ?? null
 }
 
-// ── Core fetch wrapper ────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────────
+//  CACHE SYSTEM
+// ────────────────────────────────────────────────────────────────────────────────
+
+const CACHE_PREFIX = 'evibex_cache_'
+const DEFAULT_TTL = 5 * 60 * 1000 // 5 minutes
+
+/**
+ * Generate a cache key from the URL and optional parameters
+ */
+function getCacheKey(url) {
+  // Use URL as-is, but remove trailing slashes and query order doesn't matter
+  return url
+}
+
+/**
+ * Get cached data
+ */
+function getCache(key) {
+  try {
+    const item = localStorage.getItem(CACHE_PREFIX + key)
+    if (!item) return null
+    const { data, timestamp, ttl } = JSON.parse(item)
+    const now = Date.now()
+    if (now - timestamp > ttl) {
+      localStorage.removeItem(CACHE_PREFIX + key)
+      return null
+    }
+    return data
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Set cached data
+ */
+function setCache(key, data, ttl = DEFAULT_TTL) {
+  try {
+    const item = { data, timestamp: Date.now(), ttl }
+    localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(item))
+  } catch {
+    // Ignore storage errors (quota exceeded, etc.)
+  }
+}
+
+/**
+ * Clear all cached items
+ */
+export function clearAppCache() {
+  const keys = Object.keys(localStorage)
+  keys.forEach(key => {
+    if (key.startsWith(CACHE_PREFIX)) {
+      localStorage.removeItem(key)
+    }
+  })
+}
+
+/**
+ * Invalidate cache for a specific key pattern (optional)
+ */
+function invalidateCache(pattern) {
+  const keys = Object.keys(localStorage)
+  keys.forEach(key => {
+    if (key.startsWith(CACHE_PREFIX) && key.includes(pattern)) {
+      localStorage.removeItem(key)
+    }
+  })
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+//  CORE FETCH WITH CACHING
+// ────────────────────────────────────────────────────────────────────────────────
+
 async function apiFetch(path, options = {}) {
   const token = getToken()
   const headers = {
@@ -40,6 +113,19 @@ async function apiFetch(path, options = {}) {
     ...options.headers,
   }
 
+  const method = options.method || 'GET'
+  const isGet = method === 'GET'
+  const cacheKey = getCacheKey(path)
+
+  // ── Try cache for GET requests ──
+  if (isGet) {
+    const cached = getCache(cacheKey)
+    if (cached !== null) {
+      return cached // Return cached data immediately
+    }
+  }
+
+  // ── Perform fetch ──
   let res
   try {
     res = await fetch(path, { ...options, headers })
@@ -56,13 +142,30 @@ async function apiFetch(path, options = {}) {
     throw new Error(msg)
   }
 
-  if (res.status === 204) return null
-  return res.json()
+  let responseData
+  if (res.status === 204) {
+    responseData = null
+  } else {
+    responseData = await res.json()
+  }
+
+  // ── Cache GET responses ──
+  if (isGet && responseData !== null) {
+    setCache(cacheKey, responseData, DEFAULT_TTL)
+  }
+
+  // ── Invalidate cache on mutations (POST, PUT, PATCH, DELETE) ──
+  if (!isGet) {
+    // Clear all cache after any mutation to keep data fresh
+    clearAppCache()
+  }
+
+  return responseData
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 //  AUTH
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 
 export async function loginAdmin(adminName, password) {
   return apiFetch(`${prefix('admin')}/auth/login`, {
@@ -83,9 +186,9 @@ export async function login(name, password, role = 'admin') {
   return loginAdmin(name, password)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 //  USER MANAGEMENT
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 
 export async function getUserProfile(userId, role = getRole()) {
   const id = String(userId ?? '').trim()
@@ -137,9 +240,6 @@ export async function editUserProfile(userId, fields, role = getRole()) {
 
 /**
  * Send email to a user
- * @param {string} email - User's email address
- * @param {string} subject - Email subject
- * @param {string} message - Email body content
  */
 export async function sendUserEmail(email, subject, message, role = getRole()) {
   if (!email || !subject || !message) {
@@ -151,69 +251,38 @@ export async function sendUserEmail(email, subject, message, role = getRole()) {
   })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 //  DASHBOARD & ANALYTICS
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 
-/**
- * Get dashboard overview stats: DAU/MAU, signups, active streams, total posts, moderation queue, revenue counters
- */
 export async function getDashboardOverview(role = getRole()) {
   return apiFetch(`${prefix(role)}/dashboard/overview`)
 }
 
-/**
- * Get active users stats
- */
 export async function getActiveUsers(role = getRole()) {
   return apiFetch(`${prefix(role)}/dashboard/active-users`)
 }
 
-/**
- * Get product analytics
- */
 export async function getProductAnalytics(role = getRole()) {
   return apiFetch(`${prefix(role)}/analytics/product`)
 }
 
-/**
- * Get recent activity feed
- */
 export async function getActivityFeed(role = getRole()) {
   return apiFetch(`${prefix(role)}/activity`)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  CONTENT MODERATION — collections & actions
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
+//  CONTENT MODERATION
+// ────────────────────────────────────────────────────────────────────────────────
 
-/**
- * Fetch items from any content collection.
- * @param {string} collection - Allowed collections: reports, videos, images, comments, dms, streams,
- *                              stream-recordings, ledger, coin-purchases, gift-transactions, deposits,
- *                              withdrawals, creator-earnings, viewer-earnings, earnings-payouts,
- *                              platform-revenue, coin-packages, gifts, subscriptions, notifications,
- *                              notification-logs, broadcasts, broadcast-messages, hashtags,
- *                              payment-gateways, fraud-alerts, admin-audit-logs, feature-flags,
- *                              support-tickets
- * @param {object} params - query params (e.g., { status: 'pending', limit: 20 })
- */
 export async function getAdminCollection(collection, params = {}, role = getRole()) {
   const query = new URLSearchParams(params).toString()
   const url = `${prefix(role)}/collections/${collection}${query ? '?' + query : ''}`
   return apiFetch(url)
 }
 
-// Alias for backward compatibility (used by ContentModerationPage)
 export const getContentCollection = getAdminCollection
 
-/**
- * Apply moderation action to any content type.
- * @param {string} collection - Allowed collections: reports, videos, images, comments, dms
- * @param {string} contentId - ObjectId of the content item
- * @param {string} action - 'approve' | 'remove' | 'shadow_ban' | 'escalate'
- * @param {string} reason - reason for the action
- */
 export async function moderateContent(collection, contentId, action, reason, role = getRole()) {
   if (!collection || !contentId || !action || !reason) {
     throw new Error('collection, contentId, action, and reason are required.')
@@ -224,23 +293,15 @@ export async function moderateContent(collection, contentId, action, reason, rol
   })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 //  LIVE STREAMING
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 
-/**
- * Get all live streams, optionally filter by active.
- * @param {object} options - { active: true/false }
- */
 export async function getLiveStreams({ active } = {}, role = getRole()) {
   const query = active !== undefined ? `?active=${active}` : ''
   return apiFetch(`${prefix(role)}/live/streams${query}`)
 }
 
-/**
- * Force-end a live stream by admin.
- * @param {string} streamId - ObjectId of the stream
- */
 export async function forceEndStream(streamId, role = getRole()) {
   if (!streamId) throw new Error('Stream ID is required.')
   return apiFetch(`${prefix(role)}/live/streams/${streamId}/force-end`, {
@@ -248,24 +309,15 @@ export async function forceEndStream(streamId, role = getRole()) {
   })
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  FINANCIALS — Earnings, Withdrawals, Payouts
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
+//  FINANCIALS
+// ────────────────────────────────────────────────────────────────────────────────
 
-/**
- * Get users with earnings information.
- * @param {string} status - 'unpaid' | 'paid' | 'all' (defaults to 'all')
- */
 export async function getEarningsUsers(status = 'all', role = getRole()) {
   const query = status !== 'all' ? `?status=${status}` : ''
   return apiFetch(`${prefix(role)}/earnings/users${query}`)
 }
 
-/**
- * Mark a user's earnings as paid (debits the earning wallet).
- * @param {string} userId - ObjectId of the user
- * @param {number} amount - (optional) Amount to pay. If omitted, pays the full balance.
- */
 export async function markEarningsPaid(userId, amount, role = getRole()) {
   if (!userId) throw new Error('User ID is required.')
   const body = amount !== undefined && amount !== null && !isNaN(amount) ? { amount } : {}
@@ -275,51 +327,30 @@ export async function markEarningsPaid(userId, amount, role = getRole()) {
   })
 }
 
-/**
- * Get withdrawals by status (pending, processing, etc.)
- * @param {string} status - e.g., 'pending', 'processing'
- */
 export async function getWithdrawals(status, role = getRole()) {
   if (!status) throw new Error('Status is required (pending, processing, etc.).')
   return apiFetch(`${prefix(role)}/withdrawals/${status}`)
 }
 
-/**
- * Fetch financial collections like ledger, deposits, etc.
- * @param {string} collection - 'ledger', 'deposits', 'withdrawals', 'creator-earnings', 'viewer-earnings', 'earnings-payouts', 'platform-revenue'
- * @param {object} params - optional query params
- */
 export async function getFinancialCollection(collection, params = {}, role = getRole()) {
   const query = new URLSearchParams(params).toString()
   const url = `${prefix(role)}/collections/${collection}${query ? '?' + query : ''}`
   return apiFetch(url)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 //  SETTINGS
-// ═══════════════════════════════════════════════════════════════════════════════
+// ────────────────────────────────────────────────────────────────────────────────
 
-/**
- * Get all settings (all categories).
- */
 export async function getAllSettings(role = getRole()) {
   return apiFetch(`${prefix(role)}/settings`)
 }
 
-/**
- * Get settings for a specific category.
- * @param {string} category - e.g., 'feature_flags', 'platform_fees', etc.
- */
 export async function getSettingsByCategory(category, role = getRole()) {
   if (!category) throw new Error('Category is required.')
   return apiFetch(`${prefix(role)}/settings/${category}`)
 }
 
-/**
- * Update settings for a category.
- * @param {string} category - e.g., 'feature_flags', 'platform_fees', etc.
- * @param {object} configData - the configuration object (will be merged/overwritten)
- */
 export async function updateSettings(category, configData, role = getRole()) {
   if (!category) throw new Error('Category is required.')
   return apiFetch(`${prefix(role)}/settings/${category}`, {

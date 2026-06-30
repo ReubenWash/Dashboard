@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { getAllUsers, getRole, resolveId, getDashboardOverview } from '../api/client'
+import { useCachedFetch } from '../hooks/useCachedFetch'
 
-// ── Enhanced Quick Actions ────────────────────────────────────────────────────
+// ── Quick Actions ─────────────────────────────────────────────────────────────
 const QUICK_ACTIONS = [
   { label: 'Look Up User',  icon: 'bi-search',        path: '/lookup',   color: 'var(--accent)' },
   { label: 'Moderate User', icon: 'bi-shield-check',  path: '/moderate', color: 'var(--warning)' },
@@ -57,7 +58,6 @@ function deriveStats(users) {
   }
 }
 
-// ── Helper: safely format currency ────────────────────────────────────────────
 function formatCurrency(value) {
   if (value === undefined || value === null) return '—'
   const num = typeof value === 'number' ? value : parseFloat(value)
@@ -68,22 +68,40 @@ export default function DashboardPage() {
   const { user, role } = useAuth()
   const navigate = useNavigate()
 
-  const isAdmin     = role !== 'moderator'
+  const isAdmin = role !== 'moderator'
   const displayName = user?.admin_name ?? user?.moderator_name ?? user?.name ?? 'Staff'
 
   // ── State ──────────────────────────────────────────────────────────────────────
-  const [stats,        setStats]        = useState({ total: null, banned: null, suspended: null, muted: null })
-  const [overview,     setOverview]     = useState(null)
-  const [users,        setUsers]        = useState([])
+  const [users, setUsers] = useState([])
+  const [stats, setStats] = useState({ total: null, banned: null, suspended: null, muted: null })
   const [statsLoading, setStatsLoading] = useState(true)
-  const [statsError,   setStatsError]   = useState(null)
-  const [search,       setSearch]       = useState('')
+  const [statsError, setStatsError] = useState(null)
+  const [search, setSearch] = useState('')
 
-  // ── Fetch users + overview ──────────────────────────────────────────────────
+  // ── Cached fetch for overview ──────────────────────────────────────────────
+  const { 
+    data: overview, 
+    loading: overviewLoading,
+    error: overviewError,
+    refresh: refreshOverview 
+  } = useCachedFetch(
+    async () => {
+      const currentRole = role ?? getRole()
+      return await getDashboardOverview(currentRole)
+    },
+    `dashboard_overview_${role}`,
+    { 
+      ttl: 5 * 60 * 1000, // 5 minutes
+      initialData: null,
+      onError: (err) => console.warn('Overview not available:', err.message)
+    }
+  )
+
+  // ── Fetch users ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const currentRole = role ?? getRole()
+    setStatsLoading(true)
     
-    // Fetch users first (always works)
     getAllUsers(currentRole)
       .then(usersData => {
         const list = Array.isArray(usersData)
@@ -101,15 +119,6 @@ export default function DashboardPage() {
         setStatsError('Failed to load users. Please refresh.')
       })
       .finally(() => setStatsLoading(false))
-
-    // Then try to fetch overview (but don't crash if it fails)
-    getDashboardOverview(currentRole)
-      .then(overviewData => {
-        setOverview(overviewData)
-      })
-      .catch(err => {
-        console.warn('Dashboard overview not available:', err.message)
-      })
   }, [role])
 
   // ── Filter users ─────────────────────────────────────────────────────────────
@@ -121,11 +130,11 @@ export default function DashboardPage() {
       (u.full_name ?? '').toLowerCase().includes(q) ||
       (u.email     ?? '').toLowerCase().includes(q) ||
       (u.phone_number ?? u.phone ?? '').toLowerCase().includes(q) ||
-      String(resolveId(u) ?? '').includes(q)
+      String(u._id ?? u.id ?? '').includes(q)
     )
   })
 
-  // ── Build stat cards from overview or fallback ──────────────────────────────
+  // ── Build stat cards ─────────────────────────────────────────────────────────
   const STAT_CARDS = overview ? [
     { label: 'Total Users',   icon: 'bi-people-fill',       colorClass: 'text-accent',   value: overview.total_users ?? stats.total },
     { label: 'DAU',           icon: 'bi-bar-chart-fill',    colorClass: 'text-success',   value: overview.dau ?? '—' },
@@ -143,15 +152,16 @@ export default function DashboardPage() {
   ]
 
   function renderStatVal(v) {
-    if (statsLoading) return <div style={{ width: 48, height: 22, borderRadius: 4, background: 'var(--bg-hover)', animation: 'pulse 1.4s ease-in-out infinite' }} />
+    if (statsLoading || overviewLoading) {
+      return <div style={{ width: 48, height: 22, borderRadius: 4, background: 'var(--bg-hover)', animation: 'pulse 1.4s ease-in-out infinite' }} />
+    }
     if (statsError || v === null || v === undefined) return '—'
     return v
   }
 
-  // ── Navigation helpers ──────────────────────────────────────────────────────
-  function goLookup(u)   { navigate(`/lookup?id=${resolveId(u) ?? ''}`) }
-  function goModerate(u) { navigate(`/moderate?id=${resolveId(u) ?? ''}`) }
-  function goEdit(u)     { navigate(`/edit?id=${resolveId(u) ?? ''}`) }
+  function goLookup(u)   { navigate(`/lookup?id=${u._id ?? u.id ?? ''}`) }
+  function goModerate(u) { navigate(`/moderate?id=${u._id ?? u.id ?? ''}`) }
+  function goEdit(u)     { navigate(`/edit?id=${u._id ?? u.id ?? ''}`) }
 
   return (
     <>
@@ -241,7 +251,7 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {filtered.map((u, idx) => {
-                    const uid      = resolveId(u)
+                    const uid      = u._id ?? u.id
                     const status   = getStatus(u)
                     const avatar   = u.avatar ?? u.profile_picture ?? u.avatar_url ?? null
                     const name     = u.full_name ?? u.name ?? u.username ?? '—'
@@ -257,7 +267,6 @@ export default function DashboardPage() {
                           {idx + 1}
                         </td>
 
-                        {/* User */}
                         <td style={{ padding: '12px 16px', minWidth: 190 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                             {avatar ? (
@@ -275,32 +284,25 @@ export default function DashboardPage() {
                           </div>
                         </td>
 
-                        {/* Email */}
                         <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', minWidth: 180 }}>{email}</td>
-
-                        {/* Phone */}
                         <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', minWidth: 140 }}>{phone}</td>
 
-                        {/* Status */}
                         <td style={{ padding: '12px 16px', minWidth: 110 }}>
                           <StatusBadge status={status} />
                         </td>
 
-                        {/* Verified (profile verified) */}
                         <td style={{ padding: '12px 16px', minWidth: 80 }}>
                           {verified
                             ? <i className="bi bi-patch-check-fill" style={{ color: 'var(--accent)', fontSize: 16 }} />
                             : <i className="bi bi-dash" style={{ color: 'var(--text-muted)' }} />}
                         </td>
 
-                        {/* Email Verified */}
                         <td style={{ padding: '12px 16px', minWidth: 80 }}>
                           {emailVerified
                             ? <i className="bi bi-envelope-check-fill" style={{ color: 'var(--success)', fontSize: 16 }} />
                             : <i className="bi bi-envelope-slash-fill" style={{ color: 'var(--text-muted)' }} />}
                         </td>
 
-                        {/* Actions */}
                         <td style={{ padding: '12px 14px', minWidth: 180 }}>
                           <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                             <button className="act-btn" onClick={() => goLookup(u)} title="View full profile">
