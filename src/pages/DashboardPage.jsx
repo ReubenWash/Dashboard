@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { getAllUsers, getRole, resolveId, getDashboardOverview } from '../api/client'
-import { useCachedFetch } from '../hooks/useCachedFetch'
 
 // ── Quick Actions ─────────────────────────────────────────────────────────────
 const QUICK_ACTIONS = [
@@ -58,10 +57,19 @@ function deriveStats(users) {
   }
 }
 
+// ── Helper: safely format currency ────────────────────────────────────────────
 function formatCurrency(value) {
   if (value === undefined || value === null) return '—'
   const num = typeof value === 'number' ? value : parseFloat(value)
   return isNaN(num) ? '—' : `$${num.toFixed(2)}`
+}
+
+// ── Helper: safely get value from overview with fallback ──────────────────────
+function getOverviewValue(overview, key, fallback = '—') {
+  if (!overview) return fallback
+  const value = overview[key]
+  if (value === undefined || value === null) return fallback
+  return value
 }
 
 export default function DashboardPage() {
@@ -72,36 +80,18 @@ export default function DashboardPage() {
   const displayName = user?.admin_name ?? user?.moderator_name ?? user?.name ?? 'Staff'
 
   // ── State ──────────────────────────────────────────────────────────────────────
-  const [users, setUsers] = useState([])
   const [stats, setStats] = useState({ total: null, banned: null, suspended: null, muted: null })
+  const [overview, setOverview] = useState(null)
+  const [users, setUsers] = useState([])
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState(null)
   const [search, setSearch] = useState('')
 
-  // ── Cached fetch for overview ──────────────────────────────────────────────
-  const { 
-    data: overview, 
-    loading: overviewLoading,
-    error: overviewError,
-    refresh: refreshOverview 
-  } = useCachedFetch(
-    async () => {
-      const currentRole = role ?? getRole()
-      return await getDashboardOverview(currentRole)
-    },
-    `dashboard_overview_${role}`,
-    { 
-      ttl: 5 * 60 * 1000, // 5 minutes
-      initialData: null,
-      onError: (err) => console.warn('Overview not available:', err.message)
-    }
-  )
-
-  // ── Fetch users ─────────────────────────────────────────────────────────────
+  // ── Fetch users + overview ──────────────────────────────────────────────────
   useEffect(() => {
     const currentRole = role ?? getRole()
-    setStatsLoading(true)
     
+    // Fetch users first (always works)
     getAllUsers(currentRole)
       .then(usersData => {
         const list = Array.isArray(usersData)
@@ -119,6 +109,19 @@ export default function DashboardPage() {
         setStatsError('Failed to load users. Please refresh.')
       })
       .finally(() => setStatsLoading(false))
+
+    // Fetch overview with debug logging
+    getDashboardOverview(currentRole)
+      .then(overviewData => {
+        setOverview(overviewData)
+        // ─── DEBUG: Log the full response ──────────────────────────────────────
+        console.log('📊 Backend Overview Response:', JSON.stringify(overviewData, null, 2))
+        console.log('📊 Overview keys:', Object.keys(overviewData || {}))
+        // ─────────────────────────────────────────────────────────────────────────
+      })
+      .catch(err => {
+        console.warn('Dashboard overview not available:', err.message)
+      })
   }, [role])
 
   // ── Filter users ─────────────────────────────────────────────────────────────
@@ -130,20 +133,94 @@ export default function DashboardPage() {
       (u.full_name ?? '').toLowerCase().includes(q) ||
       (u.email     ?? '').toLowerCase().includes(q) ||
       (u.phone_number ?? u.phone ?? '').toLowerCase().includes(q) ||
-      String(u._id ?? u.id ?? '').includes(q)
+      String(resolveId(u) ?? '').includes(q)
     )
   })
 
-  // ── Build stat cards ─────────────────────────────────────────────────────────
+  // ── Build stat cards from overview or fallback ──────────────────────────────
+  // These are the field names we're trying to read from the overview response
+  // You can adjust these based on what your backend actually returns
   const STAT_CARDS = overview ? [
-    { label: 'Total Users',   icon: 'bi-people-fill',       colorClass: 'text-accent',   value: overview.total_users ?? stats.total },
-    { label: 'DAU',           icon: 'bi-bar-chart-fill',    colorClass: 'text-success',   value: overview.dau ?? '—' },
-    { label: 'MAU',           icon: 'bi-graph-up',          colorClass: 'text-accent',    value: overview.mau ?? '—' },
-    { label: 'Active Streams',icon: 'bi-broadcast',         colorClass: 'text-warn',      value: overview.active_streams ?? 0 },
-    { label: 'Total Posts',   icon: 'bi-file-earmark',      colorClass: 'text-accent',    value: overview.total_posts ?? '—' },
-    { label: 'Mod Queue',     icon: 'bi-clock-history',     colorClass: 'text-warn',      value: overview.moderation_queue ?? 0 },
-    { label: 'Revenue',       icon: 'bi-coin',              colorClass: 'text-success',   value: formatCurrency(overview.revenue) },
-    { label: 'Banned',        icon: 'bi-slash-circle-fill', colorClass: 'text-danger2',   value: stats.banned },
+    { 
+      label: 'Total Users', 
+      icon: 'bi-people-fill', 
+      colorClass: 'text-accent', 
+      value: getOverviewValue(overview, 'total_users') ?? 
+             getOverviewValue(overview, 'userCount') ??
+             getOverviewValue(overview, 'totalUsers') ??
+             stats.total 
+    },
+    { 
+      label: 'DAU (Daily Active)', 
+      icon: 'bi-bar-chart-fill', 
+      colorClass: 'text-success', 
+      value: getOverviewValue(overview, 'dau') ??
+             getOverviewValue(overview, 'daily_active_users') ??
+             getOverviewValue(overview, 'dailyActive') ??
+             getOverviewValue(overview, 'active_users_today') ??
+             '—' 
+    },
+    { 
+      label: 'MAU (Monthly Active)', 
+      icon: 'bi-graph-up', 
+      colorClass: 'text-accent', 
+      value: getOverviewValue(overview, 'mau') ??
+             getOverviewValue(overview, 'monthly_active_users') ??
+             getOverviewValue(overview, 'monthlyActive') ??
+             getOverviewValue(overview, 'active_users_month') ??
+             '—' 
+    },
+    { 
+      label: 'Active Streams', 
+      icon: 'bi-broadcast', 
+      colorClass: 'text-warn', 
+      value: getOverviewValue(overview, 'active_streams') ??
+             getOverviewValue(overview, 'live_streams') ??
+             getOverviewValue(overview, 'activeStreams') ??
+             getOverviewValue(overview, 'liveStreams') ??
+             0 
+    },
+    { 
+      label: 'Total Posts', 
+      icon: 'bi-file-earmark', 
+      colorClass: 'text-accent', 
+      value: getOverviewValue(overview, 'total_posts') ??
+             getOverviewValue(overview, 'total_content') ??
+             getOverviewValue(overview, 'totalContent') ??
+             getOverviewValue(overview, 'content_count') ??
+             getOverviewValue(overview, 'postsCount') ??
+             '—' 
+    },
+    { 
+      label: 'Mod Queue', 
+      icon: 'bi-clock-history', 
+      colorClass: 'text-warn', 
+      value: getOverviewValue(overview, 'moderation_queue') ??
+             getOverviewValue(overview, 'pending_reports') ??
+             getOverviewValue(overview, 'moderationQueue') ??
+             getOverviewValue(overview, 'pendingReports') ??
+             getOverviewValue(overview, 'reports_pending') ??
+             0 
+    },
+    { 
+      label: 'Revenue', 
+      icon: 'bi-coin', 
+      colorClass: 'text-success', 
+      value: formatCurrency(
+        overview.revenue ?? 
+        overview.total_revenue ?? 
+        overview.platform_revenue ??
+        overview.totalRevenue ??
+        overview.platformRevenue ??
+        null
+      )
+    },
+    { 
+      label: 'Banned', 
+      icon: 'bi-slash-circle-fill', 
+      colorClass: 'text-danger2', 
+      value: stats.banned 
+    },
   ] : [
     { label: 'Total Users',  icon: 'bi-people-fill',       colorClass: 'text-accent',  value: stats.total },
     { label: 'Banned Users', icon: 'bi-slash-circle-fill', colorClass: 'text-danger2', value: stats.banned },
@@ -152,16 +229,14 @@ export default function DashboardPage() {
   ]
 
   function renderStatVal(v) {
-    if (statsLoading || overviewLoading) {
-      return <div style={{ width: 48, height: 22, borderRadius: 4, background: 'var(--bg-hover)', animation: 'pulse 1.4s ease-in-out infinite' }} />
-    }
+    if (statsLoading) return <div style={{ width: 48, height: 22, borderRadius: 4, background: 'var(--bg-hover)', animation: 'pulse 1.4s ease-in-out infinite' }} />
     if (statsError || v === null || v === undefined) return '—'
     return v
   }
 
-  function goLookup(u)   { navigate(`/lookup?id=${u._id ?? u.id ?? ''}`) }
-  function goModerate(u) { navigate(`/moderate?id=${u._id ?? u.id ?? ''}`) }
-  function goEdit(u)     { navigate(`/edit?id=${u._id ?? u.id ?? ''}`) }
+  function goLookup(u)   { navigate(`/lookup?id=${resolveId(u) ?? ''}`) }
+  function goModerate(u) { navigate(`/moderate?id=${resolveId(u) ?? ''}`) }
+  function goEdit(u)     { navigate(`/edit?id=${resolveId(u) ?? ''}`) }
 
   return (
     <>
@@ -251,7 +326,7 @@ export default function DashboardPage() {
                 </thead>
                 <tbody>
                   {filtered.map((u, idx) => {
-                    const uid      = u._id ?? u.id
+                    const uid      = resolveId(u)
                     const status   = getStatus(u)
                     const avatar   = u.avatar ?? u.profile_picture ?? u.avatar_url ?? null
                     const name     = u.full_name ?? u.name ?? u.username ?? '—'
