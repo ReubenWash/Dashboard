@@ -16,32 +16,67 @@ export default function ActivityPage() {
     setLoading(true)
     try {
       const data = await getActivityFeed(role)
-      // ─── DEBUG: Log the full response ──────────────────────────────────────
-      console.log('📊 Activity Feed Response:', JSON.stringify(data, null, 2))
-      console.log('📊 Activity keys:', Object.keys(data || {}))
+      console.log('📊 Activity Feed Response:', data)
       
-      // Try multiple possible structures
+      // ── Parse the response into a unified list ──
       let list = []
-      if (Array.isArray(data)) {
-        list = data
-      } else if (data?.activities && Array.isArray(data.activities)) {
-        list = data.activities
-      } else if (data?.data && Array.isArray(data.data)) {
-        list = data.data
-      } else if (data?.items && Array.isArray(data.items)) {
-        list = data.items
-      } else {
-        // If it's an object with numeric keys, convert to array
-        if (data && typeof data === 'object') {
-          const values = Object.values(data)
-          if (values.length > 0 && values.some(v => typeof v === 'object')) {
-            list = values
-          }
-        }
+      
+      // 1. Live streams
+      if (data?.live_activity && Array.isArray(data.live_activity)) {
+        data.live_activity.forEach(item => {
+          list.push({
+            ...item,
+            type: 'live_stream',
+            message: `${item.streamer_username} started stream: "${item.title}"`,
+            timestamp: item.started_at || item.created_at,
+          })
+        })
       }
       
+      // 2. New users
+      if (data?.new_users && Array.isArray(data.new_users)) {
+        data.new_users.forEach(item => {
+          list.push({
+            ...item,
+            type: 'user_signup',
+            message: `New user joined: ${item.username || item.full_name || 'Unknown'}`,
+            timestamp: item.created_at,
+          })
+        })
+      }
+      
+      // 3. Reports
+      if (data?.reports && Array.isArray(data.reports)) {
+        data.reports.forEach(item => {
+          list.push({
+            ...item,
+            type: 'report',
+            message: `Report filed: ${item.reason || 'No reason'}`,
+            timestamp: item.created_at,
+          })
+        })
+      }
+      
+      // 4. Transactions
+      if (data?.transactions && Array.isArray(data.transactions)) {
+        data.transactions.forEach(item => {
+          list.push({
+            ...item,
+            type: 'transaction',
+            message: `Transaction of $${item.amount || 0}`,
+            timestamp: item.created_at,
+          })
+        })
+      }
+      
+      // Sort by timestamp (newest first)
+      list.sort((a, b) => {
+        const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0)
+        const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0)
+        return dateB - dateA
+      })
+      
       setActivities(list)
-      console.log('📊 Parsed activities:', list.length)
     } catch (e) {
       addToast(e.message, 'error')
       setActivities([])
@@ -56,95 +91,48 @@ export default function ActivityPage() {
 
   const getActivityIcon = (type) => {
     const icons = {
+      live_stream: 'bi-broadcast',
       user_signup: 'bi-person-plus',
-      user_login: 'bi-box-arrow-in-right',
-      user_report: 'bi-flag',
-      content_upload: 'bi-cloud-upload',
-      content_remove: 'bi-trash',
-      moderation: 'bi-shield-check',
-      payout: 'bi-cash',
-      withdrawal: 'bi-arrow-up-circle',
-      stream_start: 'bi-broadcast',
-      stream_end: 'bi-camera-video-off',
-      gift_sent: 'bi-gift',
-      subscription: 'bi-star',
-      admin_action: 'bi-gear',
-      user_verified: 'bi-patch-check',
-      email_sent: 'bi-envelope',
-      deposit: 'bi-arrow-down-circle',
-      revenue: 'bi-graph-up',
+      report: 'bi-flag',
+      transaction: 'bi-cash',
     }
     return icons[type] ?? 'bi-dot'
   }
 
   const getActivityColor = (type) => {
     const colors = {
-      user_signup: 'var(--success)',
-      user_login: 'var(--accent)',
-      user_report: 'var(--danger)',
-      content_upload: 'var(--accent)',
-      content_remove: 'var(--danger)',
-      moderation: 'var(--warning)',
-      payout: 'var(--success)',
-      withdrawal: 'var(--warning)',
-      stream_start: 'var(--success)',
-      stream_end: 'var(--danger)',
-      gift_sent: 'var(--accent)',
-      subscription: 'var(--accent)',
-      admin_action: 'var(--text-muted)',
-      user_verified: 'var(--success)',
-      email_sent: 'var(--accent)',
-      deposit: 'var(--success)',
-      revenue: 'var(--success)',
+      live_stream: 'var(--success)',
+      user_signup: 'var(--accent)',
+      report: 'var(--danger)',
+      transaction: 'var(--warning)',
     }
     return colors[type] ?? 'var(--text-muted)'
   }
 
-  // Extract type from activity object (try multiple fields)
-  const getActivityType = (activity) => {
-    return activity.type ?? activity.action ?? activity.event ?? activity.category ?? 'unknown'
-  }
-
-  // Extract message
-  const getActivityMessage = (activity) => {
-    return activity.message ?? activity.description ?? activity.details ?? activity.text ?? 'Activity'
-  }
-
-  // Extract admin name
-  const getAdminName = (activity) => {
-    return activity.admin_name ?? activity.admin?.name ?? activity.user?.name ?? null
-  }
-
-  // Extract timestamp
-  const getTimestamp = (activity) => {
-    return activity.created_at ?? activity.timestamp ?? activity.date ?? null
-  }
-
   const filteredActivities = activities.filter(a => {
-    const type = getActivityType(a)
-    if (filter !== 'all' && type !== filter) return false
+    if (filter !== 'all' && a.type !== filter) return false
     
     if (dateRange === 'today') {
       const today = new Date().toDateString()
-      const activityDate = getTimestamp(a) ? new Date(getTimestamp(a)).toDateString() : ''
+      const activityDate = a.timestamp ? new Date(a.timestamp).toDateString() : ''
       return activityDate === today
     }
     if (dateRange === 'week') {
       const weekAgo = new Date()
       weekAgo.setDate(weekAgo.getDate() - 7)
-      const activityDate = getTimestamp(a) ? new Date(getTimestamp(a)) : new Date(0)
+      const activityDate = a.timestamp ? new Date(a.timestamp) : new Date(0)
       return activityDate >= weekAgo
     }
     if (dateRange === 'month') {
       const monthAgo = new Date()
       monthAgo.setMonth(monthAgo.getMonth() - 1)
-      const activityDate = getTimestamp(a) ? new Date(getTimestamp(a)) : new Date(0)
+      const activityDate = a.timestamp ? new Date(a.timestamp) : new Date(0)
       return activityDate >= monthAgo
     }
     return true
   })
 
-  const types = [...new Set(activities.map(a => getActivityType(a)).filter(Boolean))]
+  const types = [...new Set(activities.map(a => a.type).filter(Boolean))]
 
   return (
     <>
@@ -202,11 +190,10 @@ export default function ActivityPage() {
           {!loading && filteredActivities.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {filteredActivities.map((activity, idx) => {
-                const type = getActivityType(activity)
-                const message = getActivityMessage(activity)
-                const adminName = getAdminName(activity)
-                const timestamp = getTimestamp(activity)
-                const id = activity._id ?? activity.id ?? idx
+                const type = activity.type || 'unknown'
+                const message = activity.message || 'Activity'
+                const timestamp = activity.timestamp || activity.created_at
+                const id = activity._id || activity.id || idx
 
                 return (
                   <div 
@@ -246,17 +233,12 @@ export default function ActivityPage() {
                           {activity.details}
                         </div>
                       )}
-                      {adminName && (
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
-                          <i className="bi bi-person me-1" />By: {adminName}
-                        </div>
-                      )}
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
                         <i className="bi bi-clock me-1" />
                         {timestamp ? new Date(timestamp).toLocaleString() : '—'}
                       </div>
                     </div>
-                    {type && type !== 'unknown' && (
+                    {type && (
                       <span style={{
                         padding: '2px 10px',
                         borderRadius: 20,
