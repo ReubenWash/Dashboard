@@ -12,6 +12,32 @@ const TABS = [
   { key: 'platform-revenue', label: 'Platform Revenue', icon: 'bi-graph-up' },
 ]
 
+// ── Helper: render status badge for deposits ──
+function renderStatusBadge(status) {
+  const statusMap = {
+    pending:  { color: 'var(--warning)',   bg: 'var(--warning-bg)',  label: 'Pending' },
+    success:  { color: 'var(--success)',   bg: 'var(--success-bg)',  label: 'Success' },
+    failed:   { color: 'var(--danger)',    bg: 'var(--danger-bg)',   label: 'Failed' },
+    cancelled:{ color: 'var(--text-muted)',bg: 'var(--bg-hover)',    label: 'Cancelled' },
+  }
+  const s = statusMap[status?.toLowerCase()] ?? { color: 'var(--text-muted)', bg: 'var(--bg-hover)', label: status || 'Unknown' }
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '2px 10px',
+      borderRadius: 20,
+      fontSize: 11,
+      fontWeight: 600,
+      color: s.color,
+      background: s.bg,
+      border: `1px solid ${s.color}33`,
+      textTransform: 'capitalize',
+    }}>
+      {s.label}
+    </span>
+  )
+}
+
 export default function FinancialsPage() {
   const { role } = useAuth()
   const { addToast } = useToast()
@@ -53,7 +79,6 @@ export default function FinancialsPage() {
     fetchData()
   }, [activeTab])
 
-  // Helper to get the user ID from various possible fields
   const getUserId = (item) => {
     return item?._id ?? item?.id ?? item?.user_id ?? item?.user?._id ?? item?.user?.id ?? null
   }
@@ -89,7 +114,6 @@ export default function FinancialsPage() {
           <span className="card-title"><i className="bi bi-wallet2 me-2 text-accent" />Financials</span>
         </div>
         <div className="card-body-pad">
-          {/* Tabs */}
           <div className="d-flex gap-2 flex-wrap mb-4" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 10 }}>
             {TABS.map(t => (
               <button
@@ -142,13 +166,15 @@ export default function FinancialsPage() {
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Description</th>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Amount</th>
                         <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Date</th>
+                        {activeTab === 'deposits' && (
+                          <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Status</th>
+                        )}
                       </>
                     )}
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, idx) => {
-                    // Use custom getUserId instead of resolveId because earnings might have user_id
                     const userId = getUserId(item)
                     const balance = item.amount ?? item.balance ?? 0
                     const emailVerified = item.is_email_verified === true
@@ -225,6 +251,7 @@ export default function FinancialsPage() {
                         </tr>
                       )
                     } else {
+                      // Ledger, Deposits, or Platform Revenue
                       const ledgerId = item._id ?? item.id
                       return (
                         <tr key={ledgerId || idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
@@ -234,6 +261,11 @@ export default function FinancialsPage() {
                           <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>
                             {item.created_at ? new Date(item.created_at).toLocaleString() : '—'}
                           </td>
+                          {activeTab === 'deposits' && (
+                            <td style={{ padding: '10px 12px' }}>
+                              {renderStatusBadge(item.status)}
+                            </td>
+                          )}
                         </tr>
                       )
                     }
